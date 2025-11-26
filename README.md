@@ -1,145 +1,124 @@
+============================================================
+        AR + Mouse + AI Shapes (Gesture Control System)
+============================================================
 
-AR + Mouse + AI Shapes (Gesture Control)
+Project Type : Computer Vision + Human-Computer Interaction  
+Language     : Python 3  
+Frameworks   : OpenCV, MediaPipe, AI (Optional)
 
-Touchless Gesture Mouse + 3D Object AR Manipulation + Air Drawing
-Computer Vision Project using Python, OpenCV, MediaPipe, Kalman Filter
-========================================
+------------------------------------------------------------
+PROJECT OVERVIEW
+------------------------------------------------------------
+This software enables touchless interaction with a computer
+using real-time hand tracking through a webcam.
 
-📍 Project Description
-----------------------
-This software allows users to interact with the computer
-using their HAND GESTURES — without touching the mouse.
+Core Functionalities:
+- Gesture-controlled 3D AR object manipulation
+- Touchless mouse control using hand gestures
+- Air drawing using a single finger
+- Voice controlled AI shape generation (optional)
 
-Main features:
-✔ Control mouse pointer using touchless gestures
-✔ Click left/right using pinch gestures
-✔ 3D AR Object control (rotate, scale, move)
-✔ Air Drawing Mode (sketch in air with webcam)
-✔ AI Shape Generation using voice commands (optional)
+Ideal for:
+- Educational Projects
+- Research on Natural User Interfaces
+- Computer Vision + AR Experiments
 
-----------------------------------------
-🛠️ Technologies Used
-----------------------------------------
-• Python 3.9+
-• OpenCV (cv2)
-• MediaPipe Hands
-• NumPy
-• PyAutoGUI
-• Pynput (Mouse automation)
-• Kalman Filter (cursor smoothing)
-• Google Gemini API (optional)
-• SpeechRecognition API (optional)
+------------------------------------------------------------
+MAIN FEATURES
+------------------------------------------------------------
+1️⃣ 3D AR SHAPE MODE  
+   • Rotate, Scale, Move 3D objects using two hands
 
-----------------------------------------
-🎮 Modes & Gesture Controls
-----------------------------------------
-Mode Switch:
-• Key 1 → 3D Shape Mode
-• Key 2 → AI Shape Mode
-• Key 3 → Mouse Mode
-• Key 4 → Air Drawing Mode
-• Key Q → Quit Program
-• Key A → Auto-Rotate ON/OFF
+2️⃣ AI SHAPE MODE (Optional)  
+   • Create shapes from spoken prompts
+   • Example: "Letter A", "Number 3", "Triangle"
 
-3D Shape AR Controls:
-• Two hands open → Scale + Rotate object
-• Two index fingers → Move object
-• One index finger → Move object (slow)
+3️⃣ MOUSE CONTROL MODE  
+   • Index finger → Move cursor  
+   • Pinch → Left click  
+   • Pinch with middle → Right click  
+   • Closed fist → Drag + Drop  
 
-Mouse Gesture Controls:
-• Point index finger → Move Cursor
-• Pinch (index + thumb) → Left Click
-• Pinch (index + middle + thumb) → Right Click
-• Closed fist → Drag & Hold
+4️⃣ AIR DRAWING MODE  
+   • Draw in the air using index finger
+   • Choose colors + Clear screen
 
-Air Drawing Controls:
-• Index finger UP → Draw
-• Fist → Stop drawing
-• Top buttons → Switch colors (Blue, Green, Red, Yellow)
-• CLEAR button → Clear canvas
+------------------------------------------------------------
+REQUIREMENTS
+------------------------------------------------------------
+Hardware:
+• Webcam (HD recommended)
+• Microphone (only for voice mode)
 
-----------------------------------------
-🎙️ Optional Voice + AI Features (Disabled by default)
-----------------------------------------
-You can say:
-• "Letter A"
-• "Number 5"
-• "Triangle"
-• "Pentagon"
-• "Generate shape: star" (AI generated)
+Python Libraries:
+• opencv-python
+• mediapipe
+• numpy
+• pynput
+• pyautogui
+• google-generativeai (optional)
+• speechrecognition + pyaudio (optional)
 
-To enable these:
-See Setup Instructions below.
+------------------------------------------------------------
+HOW TO RUN
+------------------------------------------------------------
+Step 1: Install dependencies:
+    pip install -r requirements.txt
 
-----------------------------------------
-📦 Installation Instructions
-----------------------------------------
-Run these commands:
+Step 2: Run the software:
+    python main.py
 
-pip install opencv-python mediapipe numpy pynput pyautogui
-pip install google-generativeai speechrecognition pyaudio
+The webcam window will open with live interaction.
 
-(If PyAudio installation fails, follow OS-specific guide)
+------------------------------------------------------------
+CONTROLS AND SHORTCUTS
+------------------------------------------------------------
+Keys:
+• 1 → 3D AR Shape Mode
+• 2 → AI Shape Mode
+• 3 → Mouse Mode
+• 4 → Air Drawing Mode
+• A → Auto-rotate ON/OFF
+• Q → Quit program
 
-----------------------------------------
-📷 Hardware Requirements
-----------------------------------------
-• A working Webcam
-• Computer with decent CPU for real-time tracking
+------------------------------------------------------------
+OPTIONAL AI + VOICE SETUP
+------------------------------------------------------------
+For security reasons the public version disables:
+- Google Gemini API Key
+- Voice Recognition
 
-----------------------------------------
-🔐 Security & Code Protection
-----------------------------------------
-For security reasons:
-• Gemini API Key is NOT included
-• Voice commands are disabled publicly
+To enable them:
+1. Open the code
+2. Add your own Gemini API Key
+3. Set:
+     GEMINI_AVAILABLE = True
+     SR_AVAILABLE = True
+4. Uncomment voice listener thread in main()
 
-If you have your own Gemini Key:
-Search this in code:
-"GEMINI_API_KEY_HERE"
+------------------------------------------------------------
+PERFORMANCE TIPS
+------------------------------------------------------------
+• Ensure good lighting so hands are detected correctly  
+• Keep hand in frame  
+• Use plain background for better tracking stability  
 
-Replace it with your API key:
-GENAI_API_KEY = "YOUR_API_KEY"
+------------------------------------------------------------
+AUTHOR DETAILS
+------------------------------------------------------------
+Developed by : Harshit Shaw  
+Project Topic: Gesture-Based Human-Computer Interaction  
+Version      : Public Release 1.0
 
-Then remove this line:
-GEMINI_AVAILABLE = False
+------------------------------------------------------------
+LICENSE & USAGE POLICY
+------------------------------------------------------------
+This project is provided for EDUCATIONAL and DEMONSTRATION
+purposes only.
 
-Similarly to enable voice:
-SR_AVAILABLE = True
+Redistribution without proper credit is prohibited.
+Commercial usage requires owner permission.
 
-----------------------------------------
-📌 File Usage
-----------------------------------------
-Run program using:
-
-python main.py
-
-Default window name:
-"AR + Mouse + AI Shapes"
-
-Press Esc or Q to close safely.
-
-----------------------------------------
-📌 Known Limitations
-----------------------------------------
-• Better performance in bright lighting
-• Not optimized for older webcams
-• Voice recognition requires a clear microphone
-
-----------------------------------------
-👤 Author
-----------------------------------------
-Created by: Harshit Shaw
-Project: Gesture-Controlled AR Interface System
-Version: Public Release v1.0
-
-----------------------------------------
-📄 License
-----------------------------------------
-This project is for EDUCATIONAL use only.
-Copying or submitting this as your own may be prohibited.
-Credit to original author required.
-
-========================================
-THANK YOU FOR USING THIS SOFTWARE 😊
-========================================
+============================================================
+            END OF DOCUMENT – THANK YOU
+============================================================
