@@ -1,6 +1,6 @@
-========================================
+
 AR + Mouse + AI Shapes (Gesture Control)
-========================================
+
 Touchless Gesture Mouse + 3D Object AR Manipulation + Air Drawing
 Computer Vision Project using Python, OpenCV, MediaPipe, Kalman Filter
 ========================================
