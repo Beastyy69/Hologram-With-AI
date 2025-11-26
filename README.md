@@ -21,6 +21,20 @@ Ideal for:
 > Computer Vision | AR/VR | Human-Computer Interaction | Gesture UI Projects
 
 ---
+## 📌 Tracking Technology
+
+This system uses **Kalman Filter based motion smoothing** to ensure
+high-stability cursor control and AR object interaction.
+
+Why Kalman Filter?
+- Reduces jitter from hand detection noise
+- Predicts next cursor state for smoother movement
+- Makes AR gestures feel natural and responsive
+
+Used for:
+✔ Mouse cursor tracking  
+✔ AR shape scaling & rotation  
+✔ Air drawing stabilization  
 
 ## 🧠 Features
 
