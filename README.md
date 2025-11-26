@@ -1,114 +1,132 @@
-────────────────────────────────────────────────────────────
-        ✋ AR + Mouse + AI Shapes (Gesture Control System)
-────────────────────────────────────────────────────────────
 
-📌 Project Type : Computer Vision + Human-Computer Interaction  
-🧠 Language     : Python 3  
-🎯 Frameworks   : OpenCV, MediaPipe, AI (Optional)
+<h1 align="center">✋ AR + Mouse + AI Shapes (Gesture Control System)</h1>
 
-────────────────────────────────────────────────────────────
-📘 PROJECT OVERVIEW
-────────────────────────────────────────────────────────────
-This software enables HAND-GESTURE based interaction with
-a computer using a webcam. No physical mouse or device is
-needed — your hand becomes the controller!
+<p align="center">
+A real-time AI + Hand Gesture based Human-Computer Interaction system using OpenCV and MediaPipe.
+</p>
 
-✔ Real-time 3D AR object manipulation  
-✔ Touchless mouse control  
-✔ Air Drawing using your index finger  
-✔ Voice command-based shape generation (optional)
+---
 
-Use in Computer Vision Projects, AR/VR research and
-Human-Computer Interaction experiments.
+## 🚀 Project Overview
 
-────────────────────────────────────────────────────────────
-🧩 FEATURES
-────────────────────────────────────────────────────────────
-• 3D SHAPE MODE  
-  Rotate / Scale / Move using two-hand gestures
+This project enables **touchless interaction** with a computer using only your **hand gestures** via a webcam.
 
-• AI SHAPE MODE *(optional)*  
-  Speak shape names — letters, numbers, objects
+With different modes, users can:
+- Manipulate and interact with **3D AR shapes**
+- Control mouse **pointer + clicks + drag**
+- Draw in the air on screen
+- Use **voice commands** for AI-generated shapes *(optional)*
 
-• MOUSE MODE  
-  Pinch clicks, drag with closed fist, pointer control
+Ideal for:
+> Computer Vision | AR/VR | Human-Computer Interaction | Gesture UI Projects
 
-• AIR DRAWING MODE  
-  Draw in space with multiple colors and eraser
+---
 
-────────────────────────────────────────────────────────────
-🛠 REQUIREMENTS
-────────────────────────────────────────────────────────────
-Hardware:
-• Webcam (HD recommended)
-• Microphone (only for voice mode)
+## 🧠 Features
 
-Python Libraries:
-• cv2 (OpenCV)
-• mediapipe
-• numpy
-• pynput
-• pyautogui
-• google-generativeai *(optional)*
-• speechrecognition & pyaudio *(optional)*
+| Feature | Description |
+|--------|-------------|
+| 🧊 AR Object Mode | Rotate, scale, move 3D shapes using gesture |
+| 🎙️ AI Shape Mode *(optional)* | Convert voice commands into custom shapes |
+| 🖱️ Touchless Mouse Mode | Move cursor, left/right click, drag |
+| ✍️ Air Drawing Mode | Draw using index finger with multiple colors |
 
-Install Dependencies:
-    pip install -r requirements.txt
+---
 
-Run Program:
-    python main.py
+## 🎮 Controls
 
-────────────────────────────────────────────────────────────
-⌨️ KEYBOARD + GESTURE CONTROLS
-────────────────────────────────────────────────────────────
-Keys:
-1 → 3D Shape Mode  
-2 → AI Mode  
-3 → Mouse Mode  
-4 → Air Drawing Mode  
-A → Auto-Rotate On/Off  
-Q → Quit
+### Keyboard
+| Key | Action |
+|-----|--------|
+| `1` | 3D Shape Mode |
+| `2` | AI Voice Shape Mode |
+| `3` | Gesture Mouse Mode |
+| `4` | Air Drawing Mode |
+| `A` | Auto-Rotate Toggle |
+| `Q` | Quit |
 
-Gesture Controls:
-• Pinch → Click  
-• Fist → Drag & Drop  
-• Index Finger → Cursor / Draw  
-• Two Open Hands → Rotate & Scale object  
+### Gesture Mapping
+| Gesture | Result |
+|--------|--------|
+| 1 finger up | Move cursor / draw |
+| Pinch (index + thumb) | Left Click |
+| Pinch (index + middle + thumb) | Right Click |
+| Closed Fist | Drag Mode |
+| Two hands open | Scale + Rotate AR object |
 
-────────────────────────────────────────────────────────────
-🤖 ENABLE AI + VOICE (OPTIONAL)
-────────────────────────────────────────────────────────────
-For security reasons:
-Gemini API key & voice recognition are disabled publicly.
+---
+
+## 🛠 Installation
+
+```sh
+pip install opencv-python mediapipe numpy pynput pyautogui
+pip install google-generativeai speechrecognition pyaudio
+```
+
+---
+
+## ▶️ Run Application
+
+```sh
+python main.py
+```
+
+---
+
+## 📌 Requirements
+- Python 3.x
+- Working webcam
+- Microphone *(only if enabling voice features)*
+
+---
+
+## 🔐 AI + Voice Control (Security Disabled in Public)
+
+This GitHub version **does not contain**:
+✔ API Keys  
+✔ Active voice processing  
 
 To enable:
-1. Insert your Gemini key in code
-2. Set:
-     GEMINI_AVAILABLE = True
-     SR_AVAILABLE = True
-3. Uncomment voice listener thread
+1. Insert your Gemini API Key in code
+2. Change to:
+```py
+GEMINI_AVAILABLE = True
+SR_AVAILABLE = True
+```
+3. Uncomment voice listener thread in `main()`
 
-────────────────────────────────────────────────────────────
-⚙ PERFORMANCE TIPS
-────────────────────────────────────────────────────────────
-• Use good lighting  
-• Keep hand visible inside frame  
-• Plain background improves tracking  
+Voice Commands Examples:
+> "Letter A", "Number 7", "Cube", "Pentagon", etc.
 
-────────────────────────────────────────────────────────────
-👤 AUTHOR
-────────────────────────────────────────────────────────────
-Developed by : Harshit Shaw  
-Project      : AR-Based Hand Gesture Interaction System  
-Version      : Public Release v1.0  
+---
 
-────────────────────────────────────────────────────────────
-📜 LICENSE
-────────────────────────────────────────────────────────────
-This project is for **EDUCATIONAL USE ONLY**.
-Redistribution without proper credit is prohibited.
-Commercial use requires permission from the author.
+## 📷 Screenshots / Demo  
+*(Add your images here in future)*  
+```
+assets/demo1.png  
+assets/mouse_control.gif
+```
 
-────────────────────────────────────────────────────────────
-✨ THANK YOU FOR USING THIS PROJECT ✨
-────────────────────────────────────────────────────────────
+---
+
+## 🔧 Performance Tips
+
+- Use bright lighting for better hand detection  
+- Keep your hand in frame  
+- Plain background improves tracking  
+
+---
+
+## 👤 Author
+
+| Name | Harshit Shaw |
+|------|--------------|
+| Role | Developer / Creator |
+| Version | v1.0 Public Release |
+
+---
+
+## 📄 License
+
+This project is licensed for **EDUCATIONAL USE ONLY**.  
+Redistribution without credit is prohibited.  
