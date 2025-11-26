@@ -1,134 +1,145 @@
-AIR MOUSE + AR 3D SHAPES + HAND GESTURE DRAWING + AI SHAPE GENERATION
-====================================================================
+========================================
+AR + Mouse + AI Shapes (Gesture Control)
+========================================
+Touchless Gesture Mouse + 3D Object AR Manipulation + Air Drawing
+Computer Vision Project using Python, OpenCV, MediaPipe, Kalman Filter
+========================================
 
-This project is a complete **Hand Gesture Controlled Interaction System**
-using **Computer Vision (OpenCV + MediaPipe)** that supports:
+📍 Project Description
+----------------------
+This software allows users to interact with the computer
+using their HAND GESTURES — without touching the mouse.
 
-✔ Air Mouse (Control mouse cursor using hand gestures)  
-✔ AR 3D Shapes (Manipulate objects using gestures)  
-✔ AI Generated Shapes (via Gemini Voice Commands)  
-✔ Air Drawing Mode (Draw in the air using finger gestures)
+Main features:
+✔ Control mouse pointer using touchless gestures
+✔ Click left/right using pinch gestures
+✔ 3D AR Object control (rotate, scale, move)
+✔ Air Drawing Mode (sketch in air with webcam)
+✔ AI Shape Generation using voice commands (optional)
 
-The system uses **hand tracking**, gesture recognition, and voice commands
-to switch between different interactive modes in real-time.
+----------------------------------------
+🛠️ Technologies Used
+----------------------------------------
+• Python 3.9+
+• OpenCV (cv2)
+• MediaPipe Hands
+• NumPy
+• PyAutoGUI
+• Pynput (Mouse automation)
+• Kalman Filter (cursor smoothing)
+• Google Gemini API (optional)
+• SpeechRecognition API (optional)
 
---------------------------------------------------------------------
-✨ FEATURES
---------------------------------------------------------------------
-1️⃣ Mouse Mode (Trackpad Simulation)
------------------------------------
-• Move cursor by index finger inside trackpad boundary  
-• Fist gesture → Click & Drag  
-• Thumb + Index pinch → Left click  
-• Thumb + Index + Middle pinch → Right click  
+----------------------------------------
+🎮 Modes & Gesture Controls
+----------------------------------------
+Mode Switch:
+• Key 1 → 3D Shape Mode
+• Key 2 → AI Shape Mode
+• Key 3 → Mouse Mode
+• Key 4 → Air Drawing Mode
+• Key Q → Quit Program
+• Key A → Auto-Rotate ON/OFF
 
-2️⃣ AR 3D Shape Mode
--------------------
-• Rotate object → Move both hands sideways/up-down (palms open)  
-• Scale object → Move both hands apart or closer  
-• Move object → Two index fingers pointing  
-• Auto-rotation toggle using key “A”  
-• Built-in shapes: Cube, Pyramid, Sphere, Pentagon, Hexagon, Octagon, Rhombus
+3D Shape AR Controls:
+• Two hands open → Scale + Rotate object
+• Two index fingers → Move object
+• One index finger → Move object (slow)
 
-3️⃣ AI Shape Generation (Voice Commands)
----------------------------------------
-• Create Letters:  
-  "letter A", "alphabet C", "A", "B", etc.
+Mouse Gesture Controls:
+• Point index finger → Move Cursor
+• Pinch (index + thumb) → Left Click
+• Pinch (index + middle + thumb) → Right Click
+• Closed fist → Drag & Hold
 
-• Create Numbers:  
-  "number five", "digit 7", "5", "two", etc.
+Air Drawing Controls:
+• Index finger UP → Draw
+• Fist → Stop drawing
+• Top buttons → Switch colors (Blue, Green, Red, Yellow)
+• CLEAR button → Clear canvas
 
-• Custom shapes using Gemini Model
+----------------------------------------
+🎙️ Optional Voice + AI Features (Disabled by default)
+----------------------------------------
+You can say:
+• "Letter A"
+• "Number 5"
+• "Triangle"
+• "Pentagon"
+• "Generate shape: star" (AI generated)
 
-4️⃣ Air Drawing Mode ✏️
------------------------
-• Use index finger to draw  
-• Toolbar supports:
-  → Blue, Green, Red, Yellow color selection  
-  → Clear canvas button  
+To enable these:
+See Setup Instructions below.
 
---------------------------------------------------------------------
-🧠 VOICE COMMANDS
---------------------------------------------------------------------
-Switch to **AI Mode** to enable voice control:
+----------------------------------------
+📦 Installation Instructions
+----------------------------------------
+Run these commands:
 
-Letters:
-- “letter A”, “B”, “alphabet C”
+pip install opencv-python mediapipe numpy pynput pyautogui
+pip install google-generativeai speechrecognition pyaudio
 
-Numbers:
-- “digit 7”, “number three”, “5”
+(If PyAudio installation fails, follow OS-specific guide)
 
-Shapes:
-- “cube”, “pyramid”, “sphere”, “pentagon”, “triangle”, etc.
+----------------------------------------
+📷 Hardware Requirements
+----------------------------------------
+• A working Webcam
+• Computer with decent CPU for real-time tracking
 
-Custom:
-- Describe any shape you want (AI will model it)
+----------------------------------------
+🔐 Security & Code Protection
+----------------------------------------
+For security reasons:
+• Gemini API Key is NOT included
+• Voice commands are disabled publicly
 
---------------------------------------------------------------------
-🎮 UI CONTROLS (Keyboard)
---------------------------------------------------------------------
-1 → AR Built-in Shape Mode  
-2 → AI Shape Mode  
-3 → Air Mouse Mode  
-4 → Air Draw Mode  
-A → Toggle auto rotate  
-Q → Quit  
+If you have your own Gemini Key:
+Search this in code:
+"GEMINI_API_KEY_HERE"
 
---------------------------------------------------------------------
-🛠 REQUIREMENTS
---------------------------------------------------------------------
-Python 3.8+ recommended
+Replace it with your API key:
+GENAI_API_KEY = "YOUR_API_KEY"
 
-Libraries:
-- opencv-python
-- mediapipe
-- numpy
-- pynput
-- pyautogui
-- SpeechRecognition
-- google-generativeai (optional if using AI mode)
-- pyaudio (for microphone input)
+Then remove this line:
+GEMINI_AVAILABLE = False
 
-Install all dependencies:
-> pip install -r requirements.txt
+Similarly to enable voice:
+SR_AVAILABLE = True
 
---------------------------------------------------------------------
-📷 CAMERA SETUP
---------------------------------------------------------------------
-Update camera source in code:
+----------------------------------------
+📌 File Usage
+----------------------------------------
+Run program using:
 
-Local webcam:
-> cap = cv2.VideoCapture(0)
+python main.py
 
-DroidCam / IP Webcam:
-> CAMERA_SOURCE = "http://<your-ip>:4747/video"
+Default window name:
+"AR + Mouse + AI Shapes"
 
---------------------------------------------------------------------
-🚀 HOW TO RUN
---------------------------------------------------------------------
-1. Connect camera
-2. Run main script:
-> python hand.py
-3. Select mode via UI buttons or keyboard keys
-4. Start interacting with your hand gestures 🎯
+Press Esc or Q to close safely.
 
---------------------------------------------------------------------
-📌 FILE STRUCTURE
---------------------------------------------------------------------
-hand.py                → Main project code
-README.txt             → Documentation (this file)
-requirements.txt       → Dependencies list
+----------------------------------------
+📌 Known Limitations
+----------------------------------------
+• Better performance in bright lighting
+• Not optimized for older webcams
+• Voice recognition requires a clear microphone
 
---------------------------------------------------------------------
-📜 LICENSE
---------------------------------------------------------------------
-This project is for educational and research purposes only.  
-Use responsibly.
+----------------------------------------
+👤 Author
+----------------------------------------
+Created by: Harshit Shaw
+Project: Gesture-Controlled AR Interface System
+Version: Public Release v1.0
 
---------------------------------------------------------------------
-👤 AUTHOR
---------------------------------------------------------------------
-Developed by: **Harshit Shaw**
+----------------------------------------
+📄 License
+----------------------------------------
+This project is for EDUCATIONAL use only.
+Copying or submitting this as your own may be prohibited.
+Credit to original author required.
 
-
---------------------------------------------------------------------
+========================================
+THANK YOU FOR USING THIS SOFTWARE 😊
+========================================
