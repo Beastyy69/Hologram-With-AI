@@ -113,14 +113,6 @@ Voice Commands Examples:
 > "Letter A", "Number 7", "Cube", "Pentagon", etc.
 
 ---
-
-## 📷 Screenshots / Demo  
-*(Add your images here in future)*  
-```
-assets/demo1.png  
-assets/mouse_control.gif
-```
-
 ---
 
 ## 🔧 Performance Tips
