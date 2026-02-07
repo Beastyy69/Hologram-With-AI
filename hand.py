@@ -521,6 +521,7 @@ def extract_json_from_text(raw_text):
 
 def set_builtin_shape(name):
     #Declare global variables
+    global shape_vertices, shape_edges, current_shape_name, last_ai_status
     name=name.lower()
     if "cube" in name:
         shape_vertices=cube_vertices_base.copy()
