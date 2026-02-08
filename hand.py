@@ -11,6 +11,8 @@ import time
 import json
 import re
 # ===== Drawing Mode Globals =====
+drawing_mode = False
+
 bpoints = [deque(maxlen=1024)]
 gpoints = [deque(maxlen=1024)]
 rpoints = [deque(maxlen=1024)]
@@ -718,8 +720,10 @@ def on_mouse(event,x,y,flags,param):
                 current_mode=mode
                 break
 def handle_air_draw_mode(frame, results, w, h):
-    global bpoints,gpoints,rpoints,ypoints
-    global blue_index,green_index,red_index,yellow_index,colorIndex
+    global bpoints, gpoints, rpoints, ypoints
+    global blue_index, green_index, red_index, yellow_index
+    global colorIndex
+    global drawing_filters 
 
     if not results.multi_hand_landmarks:
         return
@@ -776,7 +780,7 @@ def handle_air_draw_mode(frame, results, w, h):
                     cv2.line(frame,points[i][j][k-1],points[i][j][k],color[i],5)
 
 def handle_drawing_mode(frame, results, w, h):
-    global drawing_mode
+    global draw_points, drawing_mode
     
     if not results.multi_hand_landmarks:
         return
@@ -806,7 +810,6 @@ def handle_drawing_mode(frame, results, w, h):
 
 def main():
     #Declare global variables
-    drawing_mode = False
 
     cap = cv2.VideoCapture(CAMERA_SOURCE)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
