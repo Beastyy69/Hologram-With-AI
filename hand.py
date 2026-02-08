@@ -10,6 +10,21 @@ import queue
 import time
 import json
 import re
+# ===== Drawing Mode Globals =====
+drawing_mode = False
+
+bpoints = [deque(maxlen=1024)]
+gpoints = [deque(maxlen=1024)]
+rpoints = [deque(maxlen=1024)]
+ypoints = [deque(maxlen=1024)]
+
+blue_index = green_index = red_index = yellow_index = 0
+colorIndex = 0
+
+color = [(255,0,0),(0,255,0),(0,0,255),(0,255,255)]
+
+drawing_filters = {}
+draw_points = []
 #Add All The Variables Here
 # ===== OPTIONAL: Gemini + Speech Recognition =====
 try:
@@ -48,6 +63,8 @@ draw = mp.solutions.drawing_utils
 mouse = Controller()
 pyautogui.FAILSAFE = False
 screen_w, screen_h = pyautogui.size()
+CLICK_COOLDOWN = 0.5
+last_click_time = 0
 TRACKPAD_W = 0.60  
 TRACKPAD_H = 0.60  
 cursor_buf = deque(maxlen=10)
@@ -336,7 +353,7 @@ def smooth_cursor(x, y, w, h):
     mouse.position = (avg_x, avg_y)
 
 def detect_mouse_gesture(frame,lm,w,h,is_left):
-    global left_clicked,right_clicked,dragging
+    global left_clicked, right_clicked, dragging, last_click_time
 
     fingers=finger_states(lm,is_left)
     pinch_idx=is_pinch(lm[8],lm[4],lm)
@@ -521,6 +538,7 @@ def extract_json_from_text(raw_text):
 
 def set_builtin_shape(name):
     #Declare global variables
+    global shape_vertices, shape_edges, current_shape_name, last_ai_status
     name=name.lower()
     if "cube" in name:
         shape_vertices=cube_vertices_base.copy()
@@ -702,8 +720,10 @@ def on_mouse(event,x,y,flags,param):
                 current_mode=mode
                 break
 def handle_air_draw_mode(frame, results, w, h):
-    global bpoints,gpoints,rpoints,ypoints
-    global blue_index,green_index,red_index,yellow_index,colorIndex
+    global bpoints, gpoints, rpoints, ypoints
+    global blue_index, green_index, red_index, yellow_index
+    global colorIndex
+    global drawing_filters 
 
     if not results.multi_hand_landmarks:
         return
@@ -760,7 +780,7 @@ def handle_air_draw_mode(frame, results, w, h):
                     cv2.line(frame,points[i][j][k-1],points[i][j][k],color[i],5)
 
 def handle_drawing_mode(frame, results, w, h):
-    global drawing_mode
+    global draw_points, drawing_mode
     
     if not results.multi_hand_landmarks:
         return
@@ -790,7 +810,6 @@ def handle_drawing_mode(frame, results, w, h):
 
 def main():
     #Declare global variables
-    drawing_mode = False
 
     cap = cv2.VideoCapture(CAMERA_SOURCE)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
