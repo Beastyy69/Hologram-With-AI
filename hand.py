@@ -10,6 +10,19 @@ import queue
 import time
 import json
 import re
+# ===== Drawing Mode Globals =====
+bpoints = [deque(maxlen=1024)]
+gpoints = [deque(maxlen=1024)]
+rpoints = [deque(maxlen=1024)]
+ypoints = [deque(maxlen=1024)]
+
+blue_index = green_index = red_index = yellow_index = 0
+colorIndex = 0
+
+color = [(255,0,0),(0,255,0),(0,0,255),(0,255,255)]
+
+drawing_filters = {}
+draw_points = []
 #Add All The Variables Here
 # ===== OPTIONAL: Gemini + Speech Recognition =====
 try:
