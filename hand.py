@@ -48,6 +48,8 @@ draw = mp.solutions.drawing_utils
 mouse = Controller()
 pyautogui.FAILSAFE = False
 screen_w, screen_h = pyautogui.size()
+CLICK_COOLDOWN = 0.5
+last_click_time = 0
 TRACKPAD_W = 0.60  
 TRACKPAD_H = 0.60  
 cursor_buf = deque(maxlen=10)
@@ -336,7 +338,7 @@ def smooth_cursor(x, y, w, h):
     mouse.position = (avg_x, avg_y)
 
 def detect_mouse_gesture(frame,lm,w,h,is_left):
-    global left_clicked,right_clicked,dragging
+    global left_clicked, right_clicked, dragging, last_click_time
 
     fingers=finger_states(lm,is_left)
     pinch_idx=is_pinch(lm[8],lm[4],lm)
