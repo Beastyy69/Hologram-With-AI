@@ -56,7 +56,7 @@ auto_rotate = False
 mpHands = mp.solutions.hands
 hands = mpHands.Hands(
     max_num_hands=2,
-    model_complexity=0,
+    model_complexity=1,
     min_detection_confidence=0.6,
     min_tracking_confidence=0.7
 )
