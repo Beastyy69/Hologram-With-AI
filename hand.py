@@ -55,6 +55,7 @@ auto_rotate = False
 # ===== MediaPipe Hands =====
 mpHands = mp.solutions.hands
 hands = mpHands.Hands(
+    static_image_mode=False,
     max_num_hands=2,
     model_complexity=1,
     min_detection_confidence=0.6,
@@ -712,6 +713,10 @@ def draw_mode_buttons(frame):
     h,w = frame.shape[:2]
     BUTTONS = {
    # Mode Buttons Add Here
+        "CUBE": ((10,120),(110,160)),
+        "AI": ((120,120),(220,160)),
+        "MOUSE": ((230,120),(350,160)),
+        "DRAW": ((360,120),(480,160)),
     }
     for mode,((x1,y1),(x2,y2)) in BUTTONS.items():
         col=(0,255,0) if mode==current_mode else (100,100,100)
