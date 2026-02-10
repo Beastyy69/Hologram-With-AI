@@ -11,6 +11,23 @@ import time
 import json
 import re
 #Add All The Variables Here
+CLICK_COOLDOWN = 0.4
+last_click_time = 0
+
+drawing_filters = {}
+
+bpoints = [deque(maxlen=1024)]
+gpoints = [deque(maxlen=1024)]
+rpoints = [deque(maxlen=1024)]
+ypoints = [deque(maxlen=1024)]
+
+blue_index = green_index = red_index = yellow_index = 0
+colorIndex = 0
+
+color = [(255,0,0),(0,255,0),(0,0,255),(0,255,255)]
+
+draw_points = []
+
 # ===== OPTIONAL: Gemini + Speech Recognition =====
 try:
     import google.generativeai as genai
@@ -31,15 +48,16 @@ except Exception:
 
 
 # ===== CAMERA CONFIG =====
-CAMERA_SOURCE = "0"  # Change to video file path for pre-recorded video
+CAMERA_SOURCE = 0  # Change to video file path for pre-recorded video
 current_mode = "CUBE"
 auto_rotate = False
 
 # ===== MediaPipe Hands =====
 mpHands = mp.solutions.hands
 hands = mpHands.Hands(
+    static_image_mode=False,
     max_num_hands=2,
-    model_complexity=0,
+    model_complexity=1,
     min_detection_confidence=0.6,
     min_tracking_confidence=0.7
 )
@@ -72,7 +90,12 @@ prev_center2 = None
 
 last_ai_command = ""
 last_ai_status = ""
-BUTTONS = {}
+BUTTONS = {
+    "CUBE": ((10,120),(110,160)),
+    "AI": ((120,120),(220,160)),
+    "MOUSE": ((230,120),(350,160)),
+    "DRAW": ((360,120),(480,160)),
+}
 command_queue = queue.Queue()
 
 # ===== Built-in Shapes + Geometric Primitives =====
@@ -521,6 +544,7 @@ def extract_json_from_text(raw_text):
 
 def set_builtin_shape(name):
     #Declare global variables
+    global shape_vertices, shape_edges, current_shape_name, last_ai_status
     name=name.lower()
     if "cube" in name:
         shape_vertices=cube_vertices_base.copy()
@@ -558,6 +582,9 @@ def set_builtin_shape(name):
 
 def generate_shape_from_text(text):
     #Declare global variables
+    global shape_vertices, shape_edges
+    global current_shape_name, last_ai_status
+    global current_mode, last_ai_command
     last_ai_command = text.strip()
     t = last_ai_command.strip().lower()
 
@@ -626,7 +653,18 @@ def generate_shape_from_text(text):
 
     try:
         #Add The Prompt To Generate The 3D Shape Here
-        prompt = f""" """
+        prompt = f"""
+        Generate a simple 3D wireframe JSON.
+        Return JSON only.
+
+        Format:
+        {{
+        "vertices": [[x,y,z],...],
+        "edges": [[a,b],...]
+        }}
+
+        Shape: {t}
+        """
         model = genai.GenerativeModel("gemini-2.0-flash")
         resp = model.generate_content(prompt)
         data = extract_json_from_text(resp.text if hasattr(resp, "text") else str(resp))
@@ -675,6 +713,10 @@ def draw_mode_buttons(frame):
     h,w = frame.shape[:2]
     BUTTONS = {
    # Mode Buttons Add Here
+        "CUBE": ((10,120),(110,160)),
+        "AI": ((120,120),(220,160)),
+        "MOUSE": ((230,120),(350,160)),
+        "DRAW": ((360,120),(480,160)),
     }
     for mode,((x1,y1),(x2,y2)) in BUTTONS.items():
         col=(0,255,0) if mode==current_mode else (100,100,100)
@@ -790,6 +832,7 @@ def handle_drawing_mode(frame, results, w, h):
 
 def main():
     #Declare global variables
+    global drawing_mode
     drawing_mode = False
 
     cap = cv2.VideoCapture(CAMERA_SOURCE)
