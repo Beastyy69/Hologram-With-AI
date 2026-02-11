@@ -10,6 +10,28 @@ import queue
 import time
 import json
 import re
+# ===== GLOBAL VARIABLES =====
+CLICK_COOLDOWN = 0.4
+last_click_time = 0
+
+# Drawing colors (BGR format)
+color = [(255,0,0),(0,255,0),(0,0,255),(0,255,255)]
+
+# Air draw storage
+bpoints = [deque(maxlen=1024)]
+gpoints = [deque(maxlen=1024)]
+rpoints = [deque(maxlen=1024)]
+ypoints = [deque(maxlen=1024)]
+
+blue_index = 0
+green_index = 0
+red_index = 0
+yellow_index = 0
+colorIndex = 0
+
+draw_points = []
+drawing_filters = {}
+
 #Add All The Variables Here
 # ===== OPTIONAL: Gemini + Speech Recognition =====
 try:
@@ -521,6 +543,7 @@ def extract_json_from_text(raw_text):
 
 def set_builtin_shape(name):
     #Declare global variables
+    global shape_vertices, shape_edges, current_shape_name, last_ai_status
     name=name.lower()
     if "cube" in name:
         shape_vertices=cube_vertices_base.copy()
@@ -557,6 +580,9 @@ def set_builtin_shape(name):
     return False
 
 def generate_shape_from_text(text):
+    global shape_vertices, shape_edges
+    global current_shape_name, last_ai_status
+    global last_ai_command, current_mode
     #Declare global variables
     last_ai_command = text.strip()
     t = last_ai_command.strip().lower()
@@ -791,6 +817,8 @@ def handle_drawing_mode(frame, results, w, h):
 def main():
     #Declare global variables
     drawing_mode = False
+    rot_y += 0.015
+    global rot_y
 
     cap = cv2.VideoCapture(CAMERA_SOURCE)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
