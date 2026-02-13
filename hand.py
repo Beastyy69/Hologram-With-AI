@@ -31,7 +31,7 @@ except Exception:
 
 
 # ===== CAMERA CONFIG =====
-CAMERA_SOURCE = "0"  # Change to video file path for pre-recorded video
+CAMERA_SOURCE = 0
 current_mode = "CUBE"
 auto_rotate = False
 
@@ -74,6 +74,36 @@ last_ai_command = ""
 last_ai_status = ""
 BUTTONS = {}
 command_queue = queue.Queue()
+
+# ===== Mouse Click Control =====
+last_click_time = 0
+CLICK_COOLDOWN = 0.4
+
+# ===== Drawing Mode Globals =====
+draw_points = []
+drawing_mode = False
+
+# ===== Air Drawing Data =====
+bpoints = [deque(maxlen=1024)]
+gpoints = [deque(maxlen=1024)]
+rpoints = [deque(maxlen=1024)]
+ypoints = [deque(maxlen=1024)]
+
+blue_index = 0
+green_index = 0
+red_index = 0
+yellow_index = 0
+colorIndex = 0
+
+color = [
+    (255, 0, 0),    # Blue
+    (0, 255, 0),    # Green
+    (0, 0, 255),    # Red
+    (0, 255, 255)   # Yellow
+]
+
+drawing_filters = {}
+
 
 # ===== Built-in Shapes + Geometric Primitives =====
 cube_vertices_base = np.float32([
@@ -626,7 +656,21 @@ def generate_shape_from_text(text):
 
     try:
         #Add The Prompt To Generate The 3D Shape Here
-        prompt = f""" """
+        prompt = f"""
+                Create a simple 3D wireframe object for: {text}
+
+                Return ONLY JSON in this format:
+                {{
+                "vertices": [[x,y,z], ...],
+                "edges": [[i,j], ...]
+                }}
+
+                Rules:
+                - Coordinates between -1 and 1
+                - Keep shape simple
+                - Maximum 50 vertices
+                """
+
         model = genai.GenerativeModel("gemini-2.0-flash")
         resp = model.generate_content(prompt)
         data = extract_json_from_text(resp.text if hasattr(resp, "text") else str(resp))
@@ -674,8 +718,12 @@ def draw_mode_buttons(frame):
     global BUTTONS
     h,w = frame.shape[:2]
     BUTTONS = {
-   # Mode Buttons Add Here
+    "CUBE": ((10, 420), (120, 470)),
+    "AI": ((130, 420), (240, 470)),
+    "MOUSE": ((250, 420), (380, 470)),
+    "DRAW": ((390, 420), (520, 470))
     }
+
     for mode,((x1,y1),(x2,y2)) in BUTTONS.items():
         col=(0,255,0) if mode==current_mode else (100,100,100)
         cv2.rectangle(frame,(x1,y1),(x2,y2),col,2)
@@ -874,7 +922,21 @@ def main():
         draw_mode_buttons(frame)
 
         cv2.imshow("AR + Mouse + AI Shapes", frame)
-    #Make Cases For Perfoming Which Mode Here
+        key = cv2.waitKey(1) & 0xFF
+
+        if key == ord('q'):
+            break
+        elif key == ord('1'):
+            current_mode = "CUBE"
+        elif key == ord('2'):
+            current_mode = "AI"
+        elif key == ord('3'):
+            current_mode = "MOUSE"
+        elif key == ord('4'):
+            current_mode = "DRAW"
+        elif key == ord('a'):
+            auto_rotate = not auto_rotate
+
 
     cap.release()
     cv2.destroyAllWindows()
