@@ -72,6 +72,9 @@ prev_center2 = None
 
 last_ai_command = ""
 last_ai_status = ""
+# Mouse click cooldown (prevents accidental rapid clicks)
+CLICK_COOLDOWN = 0.3
+last_click_time = 0
 BUTTONS = {}
 command_queue = queue.Queue()
 
