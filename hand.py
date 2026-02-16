@@ -630,7 +630,16 @@ def generate_shape_from_text(text):
 
     try:
         #Add The Prompt To Generate The 3D Shape Here
-        prompt = f""" """
+        prompt = f"""
+Generate a simple 3D wireframe shape for: {text}
+
+Return JSON format:
+{{
+ "vertices": [[x,y,z],...],
+ "edges": [[a,b],...]
+}}
+"""
+
         model = genai.GenerativeModel("gemini-2.0-flash")
         resp = model.generate_content(prompt)
         data = extract_json_from_text(resp.text if hasattr(resp, "text") else str(resp))
