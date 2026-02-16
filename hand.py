@@ -10,13 +10,14 @@ import queue
 import time
 import json
 import re
+import os
 #Add All The Variables Here
 # ===== OPTIONAL: Gemini + Speech Recognition =====
 try:
     import google.generativeai as genai
     GEMINI_AVAILABLE = True
-    GENAI_API_KEY = "GEMINI_API_KEY_HERE"  # Replace with your actual Gemini API key
-    if GENAI_API_KEY and GENAI_API_KEY != "YOUR_GEMINI_API_KEY_HERE":
+    GENAI_API_KEY = os.getenv("GENAI_API_KEY")
+    if GENAI_API_KEY:
         genai.configure(api_key=GENAI_API_KEY)
     else:
         GEMINI_AVAILABLE = False
