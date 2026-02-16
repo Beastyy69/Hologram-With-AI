@@ -125,10 +125,11 @@ Voice Commands Examples:
 
 ## 👤 Author
 
-| Name | Harshit Shaw |
-|------|--------------|
-| Role | Developer / Creator |
-| Version | v1.0 Public Release |
+| Name | Role | Version |
+|------|------|---------|
+| Harshit Shaw | Developer / Creator | v1.0 Public Release |
+| Yash Koparde | Contributor | v1.0 Open Source Contribution |
+
 
 ---
 
