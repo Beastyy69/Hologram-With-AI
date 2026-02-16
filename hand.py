@@ -10,13 +10,14 @@ import queue
 import time
 import json
 import re
+import os
 #Add All The Variables Here
 # ===== OPTIONAL: Gemini + Speech Recognition =====
 try:
     import google.generativeai as genai
     GEMINI_AVAILABLE = True
-    GENAI_API_KEY = "GEMINI_API_KEY_HERE"  # Replace with your actual Gemini API key
-    if GENAI_API_KEY and GENAI_API_KEY != "YOUR_GEMINI_API_KEY_HERE":
+    GENAI_API_KEY = os.getenv("GENAI_API_KEY")
+    if GENAI_API_KEY:
         genai.configure(api_key=GENAI_API_KEY)
     else:
         GEMINI_AVAILABLE = False
@@ -72,6 +73,9 @@ prev_center2 = None
 
 last_ai_command = ""
 last_ai_status = ""
+# Mouse click cooldown (prevents accidental rapid clicks)
+CLICK_COOLDOWN = 0.3
+last_click_time = 0
 BUTTONS = {}
 command_queue = queue.Queue()
 
@@ -520,7 +524,7 @@ def extract_json_from_text(raw_text):
         return None
 
 def set_builtin_shape(name):
-    #Declare global variables
+    global shape_vertices, shape_edges, current_shape_name, last_ai_status
     name=name.lower()
     if "cube" in name:
         shape_vertices=cube_vertices_base.copy()
@@ -557,7 +561,7 @@ def set_builtin_shape(name):
     return False
 
 def generate_shape_from_text(text):
-    #Declare global variables
+    global shape_vertices, shape_edges, current_shape_name, last_ai_status, current_mode
     last_ai_command = text.strip()
     t = last_ai_command.strip().lower()
 
