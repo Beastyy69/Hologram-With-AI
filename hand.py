@@ -559,42 +559,69 @@ def extract_json_from_text(raw_text):
         return None
 
 def set_builtin_shape(name):
-    #Declare global variables
-    global shape_vertices, shape_edges, current_shape_name, last_ai_status
-    name=name.lower()
+    global shape_vertices, shape_edges
+    global current_shape_name, last_ai_status
+
+    name = name.lower()
+
     if "cube" in name:
-        shape_vertices=cube_vertices_base.copy()
-        shape_edges=cube_edges_base.copy()
-        current_shape_name="Cube"; last_ai_status="✓ Builtin Cube"; return True
+        shape_vertices = cube_vertices_base.copy()
+        shape_edges = cube_edges_base.copy()
+        current_shape_name = "Cube"
+        last_ai_status = "✓ Builtin Cube"
+        return True
+
     if "pyramid" in name:
-        shape_vertices=pyramid_vertices_base.copy()
-        shape_edges=pyramid_edges_base.copy()
-        current_shape_name="Pyramid"; last_ai_status="✓ Builtin Pyramid"; return True
+        shape_vertices = pyramid_vertices_base.copy()
+        shape_edges = pyramid_edges_base.copy()
+        current_shape_name = "Pyramid"
+        last_ai_status = "✓ Builtin Pyramid"
+        return True
+
     if "sphere" in name or "ball" in name:
-        shape_vertices=sphere_vertices_base.copy()
-        shape_edges=sphere_edges_base.copy()
-        current_shape_name="Sphere"; last_ai_status="✓ Builtin Sphere"; return True
+        shape_vertices = sphere_vertices_base.copy()
+        shape_edges = sphere_edges_base.copy()
+        current_shape_name = "Sphere"
+        last_ai_status = "✓ Builtin Sphere"
+        return True
+
     if "rhombus" in name or "diamond" in name:
-        shape_vertices=rhombus_vertices_base.copy()
-        shape_edges=rhombus_edges_base.copy()
-        current_shape_name="Rhombus"; last_ai_status="✓ Builtin Rhombus"; return True
+        shape_vertices = rhombus_vertices_base.copy()
+        shape_edges = rhombus_edges_base.copy()
+        current_shape_name = "Rhombus"
+        last_ai_status = "✓ Builtin Rhombus"
+        return True
+
     if "triangle" in name:
-        shape_vertices=triangle_vertices_base.copy()
-        shape_edges=triangle_edges_base.copy()
-        current_shape_name="Triangle"; last_ai_status="✓ Builtin Triangle"; return True
+        shape_vertices = triangle_vertices_base.copy()
+        shape_edges = triangle_edges_base.copy()
+        current_shape_name = "Triangle"
+        last_ai_status = "✓ Builtin Triangle"
+        return True
+
     if "pentagon" in name:
-        shape_vertices=pentagon_vertices_base.copy()
-        shape_edges=pentagon_edges_base.copy()
-        current_shape_name="Pentagon"; last_ai_status="✓ Builtin Pentagon"; return True
+        shape_vertices = pentagon_vertices_base.copy()
+        shape_edges = pentagon_edges_base.copy()
+        current_shape_name = "Pentagon"
+        last_ai_status = "✓ Builtin Pentagon"
+        return True
+
     if "hexagon" in name:
-        shape_vertices=hexagon_vertices_base.copy()
-        shape_edges=hexagon_edges_base.copy()
-        current_shape_name="Hexagon"; last_ai_status="✓ Builtin Hexagon"; return True
+        shape_vertices = hexagon_vertices_base.copy()
+        shape_edges = hexagon_edges_base.copy()
+        current_shape_name = "Hexagon"
+        last_ai_status = "✓ Builtin Hexagon"
+        return True
+
     if "octagon" in name:
-        shape_vertices=octagon_vertices_base.copy()
-        shape_edges=octagon_edges_base.copy()
-        current_shape_name="Octagon"; last_ai_status="✓ Builtin Octagon"; return True
+        shape_vertices = octagon_vertices_base.copy()
+        shape_edges = octagon_edges_base.copy()
+        current_shape_name = "Octagon"
+        last_ai_status = "✓ Builtin Octagon"
+        return True
+
     return False
+
 
 def generate_shape_from_text(text):
     #Declare global variables
