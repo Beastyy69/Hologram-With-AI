@@ -13,6 +13,44 @@ import re
 
 #Add All The Variables Here
 
+# ==================================
+# ========= CONFIGURATION ==========
+# ==================================
+
+class Config:
+    # ---- MediaPipe ----
+    MAX_HANDS = 2
+    MODEL_COMPLEXITY = 0
+    MIN_DETECTION_CONFIDENCE = 0.6
+    MIN_TRACKING_CONFIDENCE = 0.7
+
+    # ---- Camera ----
+    CAMERA_SOURCE = 0
+    FRAME_WIDTH = 640
+    FRAME_HEIGHT = 480
+
+    # ---- Trackpad ----
+    TRACKPAD_WIDTH_RATIO = 0.60
+    TRACKPAD_HEIGHT_RATIO = 0.60
+
+    # ---- Gesture Thresholds ----
+    PINCH_DISTANCE_RATIO = 0.15
+    PINCH_MIN = 20
+    PINCH_MAX = 80
+
+    # ---- Shape Defaults ----
+    DEFAULT_SHAPE_SCALE = 40.0
+    MIN_SHAPE_SCALE = 10
+    MAX_SHAPE_SCALE = 600
+
+    # ---- Mouse ----
+    CLICK_COOLDOWN = 0.4
+
+    # ---- Drawing ----
+    DRAW_BUFFER_SIZE = 1024
+    SMOOTHING_BUFFER = 6
+
+
 # ================================
 # ===== Missing Global Fixes =====
 # ================================
@@ -69,26 +107,23 @@ except Exception:
     SR_AVAILABLE = False
 
 
-# ===== CAMERA CONFIG =====
-CAMERA_SOURCE = 0  
+# ===== CAMERA CONFIG ===== 
 current_mode = "CUBE"
 auto_rotate = False
 
 # ===== MediaPipe Hands =====
 mpHands = mp.solutions.hands
 hands = mpHands.Hands(
-    max_num_hands=2,
-    model_complexity=0,
-    min_detection_confidence=0.6,
-    min_tracking_confidence=0.7
+    max_num_hands=Config.MAX_HANDS,
+    model_complexity=Config.MODEL_COMPLEXITY,
+    min_detection_confidence=Config.MIN_DETECTION_CONFIDENCE,
+    min_tracking_confidence=Config.MIN_TRACKING_CONFIDENCE
 )
 draw = mp.solutions.drawing_utils
 
 mouse = Controller()
 pyautogui.FAILSAFE = False
 screen_w, screen_h = pyautogui.size()
-TRACKPAD_W = 0.60  
-TRACKPAD_H = 0.60  
 cursor_buf = deque(maxlen=10)
 pos_history = deque(maxlen=6)
 left_clicked = False
@@ -96,7 +131,7 @@ right_clicked = False
 dragging = False
 
 shape_pos = [320, 240]
-shape_scale = 40.0
+shape_scale = Config.DEFAULT_SHAPE_SCALE
 rot_x, rot_y, rot_z = 0.0, 0.0, 0.0
 
 rot_x_buf = deque(maxlen=6)
@@ -242,8 +277,9 @@ def finger_states(lm, is_left):
     return fingers
 
 def adaptive_pinch_threshold(lm):
-    hand_size = np.linalg.norm(np.array(lm[0])-np.array(lm[9]))
-    return max(20,min(80,hand_size*0.15))
+    hand_size = np.linalg.norm(np.array(lm[0]) - np.array(lm[9]))
+    threshold = hand_size * Config.PINCH_DISTANCE_RATIO
+    return max(Config.PINCH_MIN, min(Config.PINCH_MAX, threshold))
 
 def is_pinch(p1,p2,lm):
     return np.linalg.norm(np.array(p1)-np.array(p2)) < adaptive_pinch_threshold(lm)
@@ -306,7 +342,7 @@ def handle_ar_gestures(frame, results):
             if prev_two_hand_dist is not None:
                 diff = dist - prev_two_hand_dist
                 new_scale = shape_scale + diff * 1.0
-                new_scale = np.clip(new_scale, 10, 600)
+                new_scale = np.clip(new_scale, Config.MIN_SHAPE_SCALE, Config.MAX_SHAPE_SCALE)
                 scale_buf.append(new_scale)
                 shape_scale = sum(scale_buf)/len(scale_buf) if scale_buf else new_scale
             prev_two_hand_dist = dist
@@ -338,10 +374,10 @@ def handle_ar_gestures(frame, results):
 # ===== Mouse Mode =====
 def smooth_cursor(x, y, w, h):
     # Define trackpad region (bottom-right corner)
-    pad_left = int((w - (w * TRACKPAD_W)) / 2)
-    pad_top = int((h - (h * TRACKPAD_H)) / 2)
-    pad_right = int((w + (w * TRACKPAD_W)) / 2)
-    pad_bottom = int((h + (h * TRACKPAD_H)) / 2)
+    pad_left = int((w - (w * Config.TRACKPAD_WIDTH_RATIO)) / 2)
+    pad_top = int((h - (h * Config.TRACKPAD_HEIGHT_RATIO)) / 2)
+    pad_right = int((w + (w * Config.TRACKPAD_WIDTH_RATIO)) / 2)
+    pad_bottom = int((h + (h * Config.TRACKPAD_HEIGHT_RATIO)) / 2)
 
 
     if not (pad_left <= x <= pad_right and pad_top <= y <= pad_bottom):
@@ -397,7 +433,7 @@ def detect_mouse_gesture(frame,lm,w,h,is_left):
     global last_click_time
 
     if pinch_idx and not pinch_mid:
-        if time.time() - last_click_time > CLICK_COOLDOWN:
+        if time.time() - last_click_time > Config.CLICK_COOLDOWN:
             mouse.click(Button.left)
             last_click_time = time.time()
 
@@ -864,9 +900,10 @@ def main():
     global drawing_mode
     drawing_mode = False
 
-    cap = cv2.VideoCapture(CAMERA_SOURCE)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap = cv2.VideoCapture(Config.CAMERA_SOURCE)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, Config.FRAME_WIDTH)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, Config.FRAME_HEIGHT)
+
     if not cap.isOpened():
         print("Camera not opened.")
         return
@@ -921,10 +958,10 @@ def main():
                     draw.draw_landmarks(frame, hand, mpHands.HAND_CONNECTIONS)
 
         elif current_mode=="MOUSE":
-            pad_left = int((w - (w * TRACKPAD_W)) / 2)
-            pad_top = int((h - (h * TRACKPAD_H)) / 2)
-            pad_right = int((w + (w * TRACKPAD_W)) / 2)
-            pad_bottom = int((h + (h * TRACKPAD_H)) / 2)
+            pad_left = int((w - (w * Config.TRACKPAD_WIDTH_RATIO)) / 2)
+            pad_top = int((h - (h * Config.TRACKPAD_HEIGHT_RATIO)) / 2)
+            pad_right = int((w + (w * Config.TRACKPAD_WIDTH_RATIO)) / 2)
+            pad_bottom = int((h + (h * Config.TRACKPAD_HEIGHT_RATIO)) / 2)
             cv2.rectangle(frame, (pad_left, pad_top), (pad_right, pad_bottom), (255, 255, 255), 2)
             cv2.putText(frame, "TRACKPAD (move index finger)",
             (pad_left + 10, pad_top + 20),
