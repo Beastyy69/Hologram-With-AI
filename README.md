@@ -36,6 +36,28 @@ Used for:
 ✔ AR shape scaling & rotation  
 ✔ Air drawing stabilization  
 
+## ⚙️ AR Interaction Tuning (Issue #24)
+
+AR shape interaction now uses a **hybrid stabilizer**:
+- 2D Kalman filtering for hand center and midpoint motion
+- 1D Kalman filtering for rotation and scale
+- Adaptive motion averaging for jitter reduction with fast response
+
+### Tunable constants (`hand.py`)
+- `AR_BASE_ALPHA = 0.18` → stronger smoothing at low motion (less jitter)
+- `AR_FAST_ALPHA = 0.58` → faster follow at high motion (more responsiveness)
+- `AR_SPEED_NORM = 28.0` → speed threshold for switching between stable/fast behavior
+
+### Quick calibration guide
+- If rotation/scale feels **laggy**: increase `AR_FAST_ALPHA` slightly (e.g. `0.62`)
+- If rotation/scale still **jitters**: decrease `AR_BASE_ALPHA` slightly (e.g. `0.14`)
+- If adaptation changes too early/late: tune `AR_SPEED_NORM` (`20-35` typical)
+
+Gesture mappings are unchanged:
+- Two hands open → scale + rotate
+- Two index fingers → move shape
+- One index finger → move shape
+
 ## 🧠 Features
 
 | Feature | Description |
@@ -116,6 +138,19 @@ Voice Commands Examples:
 ---
 
 ## 🔧 Performance Tips
+
+## ⚡ Real-Time Performance Update (Issue #5)
+
+The gesture loop is optimized for lower latency and smoother control:
+- Mode-aware MediaPipe pipeline (`max_num_hands=1` for Mouse/Draw, `2` for AR)
+- Reduced inference input scale (`MP_INPUT_SCALE = 0.75`) for faster processing
+- Cursor stabilization refinement (Kalman + moving average + adaptive EMA + deadzone)
+- Camera buffer trimming (`CAP_PROP_BUFFERSIZE = 1`) to reduce frame lag
+
+### Tunable constants (`hand.py`)
+- `MP_INPUT_SCALE` → lower value is faster, may reduce accuracy
+- `MP_MIN_DETECTION_CONF` / `MP_MIN_TRACKING_CONF` → detection stability vs responsiveness
+- `CURSOR_DEADZONE_PX` → increase for less jitter, decrease for finer micro-movements
 
 - Use bright lighting for better hand detection  
 - Keep your hand in frame  
