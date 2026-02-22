@@ -37,20 +37,19 @@ auto_rotate = False
 
 # ===== MediaPipe Hands =====
 mpHands = mp.solutions.hands
-hands = mpHands.Hands(
-    max_num_hands=2,
-    model_complexity=0,
-    min_detection_confidence=0.6,
-    min_tracking_confidence=0.7
-)
 draw = mp.solutions.drawing_utils
+
+MP_MODEL_COMPLEXITY = 0
+MP_MIN_DETECTION_CONF = 0.55
+MP_MIN_TRACKING_CONF = 0.7
+MP_INPUT_SCALE = 0.75
 
 mouse = Controller()
 pyautogui.FAILSAFE = False
 screen_w, screen_h = pyautogui.size()
 TRACKPAD_W = 0.60  
 TRACKPAD_H = 0.60  
-cursor_buf = deque(maxlen=10)
+CURSOR_DEADZONE_PX = 2.5
 pos_history = deque(maxlen=6)
 left_clicked = False
 right_clicked = False
@@ -166,7 +165,83 @@ class KalmanFilter:
         return self.state[:2]
 
 mouse_filter = KalmanFilter()
-cursor_buf = deque(maxlen=8)
+
+
+class CursorStabilizer:
+    """Kalman + moving average + adaptive EMA with deadzone for low-jitter cursor control."""
+    def __init__(self, ma_window=4, slow_alpha=0.2, fast_alpha=0.65, speed_norm=85.0, deadzone_px=2.5):
+        self.filter = KalmanFilter()
+        self.history = deque(maxlen=ma_window)
+        self.slow_alpha = slow_alpha
+        self.fast_alpha = fast_alpha
+        self.speed_norm = speed_norm
+        self.deadzone_px = deadzone_px
+        self.ema = None
+        self.last_output = None
+
+    def _alpha(self, speed):
+        ratio = np.clip(speed / self.speed_norm, 0.0, 1.0)
+        return self.slow_alpha + (self.fast_alpha - self.slow_alpha) * ratio
+
+    def update(self, measured_xy):
+        kalman_xy = self.filter.update(measured_xy)
+        self.history.append(np.array(kalman_xy, dtype=np.float32))
+        avg_xy = np.mean(self.history, axis=0)
+
+        if self.ema is None:
+            self.ema = avg_xy.copy()
+
+        speed = 0.0
+        if self.last_output is not None:
+            speed = float(np.linalg.norm(avg_xy - self.last_output))
+
+        alpha = self._alpha(speed)
+        self.ema = (1.0 - alpha) * self.ema + alpha * avg_xy
+
+        if self.last_output is not None:
+            if np.linalg.norm(self.ema - self.last_output) < self.deadzone_px:
+                self.ema = self.last_output.copy()
+
+        self.ema[0] = np.clip(self.ema[0], 0, screen_w)
+        self.ema[1] = np.clip(self.ema[1], 0, screen_h)
+        self.last_output = self.ema.copy()
+        return float(self.ema[0]), float(self.ema[1])
+
+
+cursor_stabilizer = CursorStabilizer(deadzone_px=CURSOR_DEADZONE_PX)
+
+
+class HandPipeline:
+    """Mode-aware lightweight MediaPipe runtime to reduce per-frame latency."""
+    def __init__(self):
+        self.single_hand = mpHands.Hands(
+            max_num_hands=1,
+            model_complexity=MP_MODEL_COMPLEXITY,
+            min_detection_confidence=MP_MIN_DETECTION_CONF,
+            min_tracking_confidence=MP_MIN_TRACKING_CONF,
+        )
+        self.dual_hand = mpHands.Hands(
+            max_num_hands=2,
+            model_complexity=MP_MODEL_COMPLEXITY,
+            min_detection_confidence=MP_MIN_DETECTION_CONF,
+            min_tracking_confidence=MP_MIN_TRACKING_CONF,
+        )
+
+    def process(self, frame_bgr, mode):
+        rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+        if MP_INPUT_SCALE < 1.0:
+            rgb = cv2.resize(rgb, None, fx=MP_INPUT_SCALE, fy=MP_INPUT_SCALE, interpolation=cv2.INTER_LINEAR)
+        rgb.flags.writeable = False
+        if mode in ("MOUSE", "DRAW"):
+            return self.single_hand.process(rgb)
+        return self.dual_hand.process(rgb)
+
+    def close(self):
+        self.single_hand.close()
+        self.dual_hand.close()
+
+
+hand_pipeline = HandPipeline()
 
 # ===== AR Interaction Tuning =====
 # Base smoothing removes jitter; fast smoothing keeps quick gestures responsive.
@@ -394,27 +469,8 @@ def smooth_cursor(x, y, w, h):
 
     sx = nx * screen_w
     sy = ny * screen_h
-
-    measured = (sx, sy)
-    pred = mouse_filter.update(measured)
-
-    cursor_buf.append(pred)
-    if len(cursor_buf) >= 6:
-        avg_x = sum(p[0] for p in cursor_buf) / len(cursor_buf)
-        avg_y = sum(p[1] for p in cursor_buf) / len(cursor_buf)
-    else:
-        avg_x, avg_y = pred
-
-    avg_y = min(max(avg_y, 0), screen_h)  
-    avg_x = min(max(avg_x, 0), screen_w)
-
-    if len(cursor_buf) >= 4:
-        avg_x = sum(p[0] for p in cursor_buf) / len(cursor_buf)
-        avg_y = sum(p[1] for p in cursor_buf) / len(cursor_buf)
-    else:
-        avg_x, avg_y = pred
-
-    mouse.position = (avg_x, avg_y)
+    stabilized = cursor_stabilizer.update((sx, sy))
+    mouse.position = stabilized
 
 def detect_mouse_gesture(frame,lm,w,h,is_left):
     global left_clicked,right_clicked,dragging
@@ -435,7 +491,6 @@ def detect_mouse_gesture(frame,lm,w,h,is_left):
         dragging=False
         return
 
-    import time
     global last_click_time
 
     if pinch_idx and not pinch_mid:
@@ -873,9 +928,11 @@ def main():
     #Declare global variables
     drawing_mode = False
 
-    cap = cv2.VideoCapture(CAMERA_SOURCE)
+    camera_source = int(CAMERA_SOURCE) if str(CAMERA_SOURCE).isdigit() else CAMERA_SOURCE
+    cap = cv2.VideoCapture(camera_source)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     if not cap.isOpened():
         print("Camera not opened.")
         return
@@ -914,8 +971,9 @@ def main():
         frame = cv2.flip(frame,1)
 
         h,w,_ = frame.shape
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = hands.process(rgb)
+        results = None
+        if current_mode in ("CUBE", "AI", "MOUSE", "DRAW"):
+            results = hand_pipeline.process(frame, current_mode)
 
         if current_mode=="AI":
             while not command_queue.empty():
@@ -924,7 +982,7 @@ def main():
         if current_mode in ("CUBE","AI"):
             if auto_rotate: rot_y += 0.015
             draw_shape(frame)
-            if results.multi_hand_landmarks:
+            if results and results.multi_hand_landmarks:
                 handle_ar_gestures(frame, results)
                 for hand in results.multi_hand_landmarks:
                     draw.draw_landmarks(frame, hand, mpHands.HAND_CONNECTIONS)
@@ -938,10 +996,10 @@ def main():
             cv2.putText(frame, "TRACKPAD (move index finger)",
             (pad_left + 10, pad_top + 20),
             cv2.FONT_HERSHEY_PLAIN, 1.1, (255,255,255), 2)
-            if results.multi_hand_landmarks:
+            if results and results.multi_hand_landmarks:
                 handle_mouse_mode(frame, results, w, h)
         elif current_mode == "DRAW":
-            if results.multi_hand_landmarks:
+            if results and results.multi_hand_landmarks:
                 handle_air_draw_mode(frame,results,w,h)
 
 
@@ -958,6 +1016,7 @@ def main():
     #Make Cases For Perfoming Which Mode Here
 
     cap.release()
+    hand_pipeline.close()
     cv2.destroyAllWindows()
 
 if __name__=="__main__":

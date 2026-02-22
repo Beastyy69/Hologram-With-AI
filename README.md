@@ -139,6 +139,19 @@ Voice Commands Examples:
 
 ## 🔧 Performance Tips
 
+## ⚡ Real-Time Performance Update (Issue #5)
+
+The gesture loop is optimized for lower latency and smoother control:
+- Mode-aware MediaPipe pipeline (`max_num_hands=1` for Mouse/Draw, `2` for AR)
+- Reduced inference input scale (`MP_INPUT_SCALE = 0.75`) for faster processing
+- Cursor stabilization refinement (Kalman + moving average + adaptive EMA + deadzone)
+- Camera buffer trimming (`CAP_PROP_BUFFERSIZE = 1`) to reduce frame lag
+
+### Tunable constants (`hand.py`)
+- `MP_INPUT_SCALE` → lower value is faster, may reduce accuracy
+- `MP_MIN_DETECTION_CONF` / `MP_MIN_TRACKING_CONF` → detection stability vs responsiveness
+- `CURSOR_DEADZONE_PX` → increase for less jitter, decrease for finer micro-movements
+
 - Use bright lighting for better hand detection  
 - Keep your hand in frame  
 - Plain background improves tracking  
