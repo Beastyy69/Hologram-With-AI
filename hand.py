@@ -55,6 +55,8 @@ pos_history = deque(maxlen=6)
 left_clicked = False
 right_clicked = False
 dragging = False
+CLICK_COOLDOWN = 0.30
+last_click_time = 0.0
 
 shape_pos = [320, 240]
 shape_scale = 40.0
@@ -64,6 +66,21 @@ last_ai_command = ""
 last_ai_status = ""
 BUTTONS = {}
 command_queue = queue.Queue()
+
+# ===== Draw Mode State =====
+color = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (0, 255, 255)]
+bpoints = [deque(maxlen=1024)]
+gpoints = [deque(maxlen=1024)]
+rpoints = [deque(maxlen=1024)]
+ypoints = [deque(maxlen=1024)]
+blue_index = 0
+green_index = 0
+red_index = 0
+yellow_index = 0
+colorIndex = 0
+drawing_filters = {}
+draw_points = deque(maxlen=2048)
+drawing_mode = False
 
 # ===== Built-in Shapes + Geometric Primitives =====
 cube_vertices_base = np.float32([
@@ -435,14 +452,13 @@ def detect_mouse_gesture(frame,lm,w,h,is_left):
         dragging=False
         return
 
-    import time
     global last_click_time
 
     if pinch_idx and not pinch_mid:
         if time.time() - last_click_time > CLICK_COOLDOWN:
             mouse.click(Button.left)
             last_click_time = time.time()
-
+            left_clicked=True
         else:
             left_clicked=False
 
@@ -601,7 +617,7 @@ def extract_json_from_text(raw_text):
         return None
 
 def set_builtin_shape(name):
-    #Declare global variables
+    global shape_vertices, shape_edges, current_shape_name, last_ai_status
     name=name.lower()
     if "cube" in name:
         shape_vertices=cube_vertices_base.copy()
@@ -638,7 +654,8 @@ def set_builtin_shape(name):
     return False
 
 def generate_shape_from_text(text):
-    #Declare global variables
+    global last_ai_command, last_ai_status
+    global shape_vertices, shape_edges, current_shape_name, current_mode
     last_ai_command = text.strip()
     t = last_ai_command.strip().lower()
 
@@ -870,8 +887,7 @@ def handle_drawing_mode(frame, results, w, h):
 
 
 def main():
-    #Declare global variables
-    drawing_mode = False
+    global rot_y
 
     cap = cv2.VideoCapture(CAMERA_SOURCE)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
