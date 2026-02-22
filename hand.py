@@ -11,7 +11,7 @@ import time
 import json
 import re
 #Add All The Variables Here
-# ===== OPTIONAL: Gemini + Speech Recognition =====
+# ===== OPTIONAL for: Gemini + Speech Recognition =====
 try:
     import google.generativeai as genai
     GEMINI_AVAILABLE = True
