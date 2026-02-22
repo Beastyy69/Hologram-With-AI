@@ -11,7 +11,7 @@ import time
 import json
 import re
 #Add All The Variables Here
-# ===== OPTIONAL: Gemini + Speech Recognition =====
+# ===== OPTIONAL for: Gemini + Speech Recognition =====
 try:
     import google.generativeai as genai
     GEMINI_AVAILABLE = True
@@ -55,25 +55,32 @@ pos_history = deque(maxlen=6)
 left_clicked = False
 right_clicked = False
 dragging = False
+CLICK_COOLDOWN = 0.30
+last_click_time = 0.0
 
 shape_pos = [320, 240]
 shape_scale = 40.0
 rot_x, rot_y, rot_z = 0.0, 0.0, 0.0
 
-rot_x_buf = deque(maxlen=6)
-rot_y_buf = deque(maxlen=6)
-scale_buf = deque(maxlen=6)
-move_buf_x = deque(maxlen=6)
-move_buf_y = deque(maxlen=6)
-
-prev_two_hand_dist = None
-prev_center1 = None
-prev_center2 = None
-
 last_ai_command = ""
 last_ai_status = ""
 BUTTONS = {}
 command_queue = queue.Queue()
+
+# ===== Draw Mode State =====
+color = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (0, 255, 255)]
+bpoints = [deque(maxlen=1024)]
+gpoints = [deque(maxlen=1024)]
+rpoints = [deque(maxlen=1024)]
+ypoints = [deque(maxlen=1024)]
+blue_index = 0
+green_index = 0
+red_index = 0
+yellow_index = 0
+colorIndex = 0
+drawing_filters = {}
+draw_points = deque(maxlen=2048)
+drawing_mode = False
 
 # ===== Built-in Shapes + Geometric Primitives =====
 cube_vertices_base = np.float32([
@@ -178,8 +185,121 @@ class KalmanFilter:
 mouse_filter = KalmanFilter()
 cursor_buf = deque(maxlen=8)
 
+# ===== AR Interaction Tuning =====
+# Base smoothing removes jitter; fast smoothing keeps quick gestures responsive.
+AR_BASE_ALPHA = 0.18
+AR_FAST_ALPHA = 0.58
+AR_SPEED_NORM = 28.0
 
-hand_filters = {}
+
+class MotionAverager:
+    """Simple moving average for scalar or 2D points."""
+    def __init__(self, window=4):
+        self.values = deque(maxlen=window)
+
+    def update(self, value):
+        arr = np.asarray(value, dtype=np.float32)
+        self.values.append(arr)
+        return np.mean(self.values, axis=0)
+
+
+class ScalarKalmanFilter:
+    """1D constant-velocity Kalman filter used for smooth scale/rotation."""
+    def __init__(self, process_var=0.02, measure_var=5.0):
+        self.state = np.zeros(2, dtype=np.float32)  # [value, velocity]
+        self.P = np.eye(2, dtype=np.float32) * 1000.0
+        self.F = np.array([[1.0, 1.0], [0.0, 1.0]], dtype=np.float32)
+        self.H = np.array([[1.0, 0.0]], dtype=np.float32)
+        self.Q = np.eye(2, dtype=np.float32) * process_var
+        self.R = np.array([[measure_var]], dtype=np.float32)
+
+    def update(self, measurement):
+        self.state = self.F @ self.state
+        self.P = self.F @ self.P @ self.F.T + self.Q
+
+        measurement_vec = np.array([float(measurement)], dtype=np.float32)
+        y = measurement_vec - (self.H @ self.state)
+        S = self.H @ self.P @ self.H.T + self.R
+        K = self.P @ self.H.T @ np.linalg.inv(S)
+        self.state = self.state + (K @ y)
+        self.P = (np.eye(2, dtype=np.float32) - (K @ self.H)) @ self.P
+        return float(self.state[0])
+
+
+class ARGestureStabilizer:
+    """Stabilizes AR move/rotate/scale while preserving gesture mapping behavior."""
+    def __init__(self):
+        self.hand_center_filters = {}
+        self.midpoint_filter = KalmanFilter()
+        self.scale_filter = ScalarKalmanFilter(process_var=0.08, measure_var=20.0)
+        self.rot_x_filter = ScalarKalmanFilter(process_var=0.04, measure_var=2.0)
+        self.rot_y_filter = ScalarKalmanFilter(process_var=0.04, measure_var=2.0)
+        self.pos_averager = MotionAverager(window=3)
+        self.prev_two_hand_dist = None
+        self.prev_midpoint = None
+
+    @staticmethod
+    def _adaptive_alpha(speed):
+        speed_ratio = min(max(speed / AR_SPEED_NORM, 0.0), 1.0)
+        return AR_BASE_ALPHA + (AR_FAST_ALPHA - AR_BASE_ALPHA) * speed_ratio
+
+    def get_hand_center(self, hand_idx, palm_center):
+        if hand_idx not in self.hand_center_filters:
+            self.hand_center_filters[hand_idx] = KalmanFilter()
+        return self.hand_center_filters[hand_idx].update(palm_center)
+
+    def smooth_scale_rotation(self, lm1, f1, idx1, lm2, f2, idx2, w, h, current_scale, current_rx, current_ry):
+        c1 = self.get_hand_center(idx1, lm1[9])
+        c2 = self.get_hand_center(idx2, lm2[9])
+        midpoint = (c1 + c2) / 2.0
+        dist = np.linalg.norm(c1 - c2)
+
+        open1 = sum(f1) >= 3
+        open2 = sum(f2) >= 3
+        if not (open1 and open2):
+            self.prev_two_hand_dist = dist
+            return None
+
+        scale_delta = 0.0
+        if self.prev_two_hand_dist is not None:
+            scale_delta = dist - self.prev_two_hand_dist
+        self.prev_two_hand_dist = dist
+
+        target_scale = np.clip(current_scale + scale_delta, 10, 600)
+        kf_scale = self.scale_filter.update(target_scale)
+        scale_alpha = self._adaptive_alpha(abs(scale_delta))
+        new_scale = (1.0 - scale_alpha) * current_scale + scale_alpha * kf_scale
+
+        dx = (midpoint[0] - w / 2.0) / (w / 2.0)
+        dy = (midpoint[1] - h / 2.0) / (h / 2.0)
+        target_ry = dx * math.pi * 1.2
+        target_rx = dy * math.pi * 1.2
+
+        kf_rx = self.rot_x_filter.update(target_rx)
+        kf_ry = self.rot_y_filter.update(target_ry)
+        rot_speed = max(abs(kf_rx - current_rx), abs(kf_ry - current_ry)) * 30.0
+        rot_alpha = self._adaptive_alpha(rot_speed)
+        new_rx = (1.0 - rot_alpha) * current_rx + rot_alpha * kf_rx
+        new_ry = (1.0 - rot_alpha) * current_ry + rot_alpha * kf_ry
+
+        return float(new_scale), float(new_rx), float(new_ry)
+
+    def smooth_position(self, target_point, current_pos):
+        kf_point = self.midpoint_filter.update(target_point)
+        avg_point = self.pos_averager.update(kf_point)
+
+        speed = 0.0
+        if self.prev_midpoint is not None:
+            speed = float(np.linalg.norm(avg_point - self.prev_midpoint))
+        self.prev_midpoint = np.array(avg_point, dtype=np.float32)
+
+        pos_alpha = self._adaptive_alpha(speed)
+        new_x = (1.0 - pos_alpha) * current_pos[0] + pos_alpha * avg_point[0]
+        new_y = (1.0 - pos_alpha) * current_pos[1] + pos_alpha * avg_point[1]
+        return [float(new_x), float(new_y)]
+
+
+ar_stabilizer = ARGestureStabilizer()
 
 # ===== Helper Functions =====
 def rotation_matrix(rx, ry, rz):
@@ -229,7 +349,7 @@ def draw_shape(frame):
 
 # ====== AR GESTURES (FIXED - NO RESET) ======
 def handle_ar_gestures(frame, results):
-    global shape_pos, shape_scale, rot_x, rot_y, prev_two_hand_dist
+    global shape_pos, shape_scale, rot_x, rot_y
     h, w = frame.shape[:2]
 
     if not results.multi_hand_landmarks:
@@ -246,55 +366,33 @@ def handle_ar_gestures(frame, results):
     if len(hands_info) == 2:
         (lm1, f1, idx1), (lm2, f2, idx2) = hands_info
 
-        if idx1 not in hand_filters:
-            hand_filters[idx1] = KalmanFilter()
-        if idx2 not in hand_filters:
-            hand_filters[idx2] = KalmanFilter()
-
-        c1 = hand_filters[idx1].update(lm1[9])
-        c2 = hand_filters[idx2].update(lm2[9])
-
-        mid_x = int((c1[0] + c2[0]) / 2)
-        mid_y = int((c1[1] + c2[1]) / 2)
-        dist = np.linalg.norm(c1 - c2)
-
         open1 = sum(f1) >= 3
         open2 = sum(f2) >= 3
         index1 = (f1 == [0,1,0,0,0])
         index2 = (f2 == [0,1,0,0,0])
 
         if open1 and open2:
-            if prev_two_hand_dist is not None:
-                diff = dist - prev_two_hand_dist
-                new_scale = shape_scale + diff * 1.0
-                new_scale = np.clip(new_scale, 10, 600)
-                scale_buf.append(new_scale)
-                shape_scale = sum(scale_buf)/len(scale_buf) if scale_buf else new_scale
-            prev_two_hand_dist = dist
-
-            dx = (mid_x - w/2) / (w/2)
-            dy = (mid_y - h/2) / (h/2)
-            rot_y_buf.append(dx * math.pi * 1.2)
-            rot_x_buf.append(dy * math.pi * 1.2)
-            rot_y = sum(rot_y_buf)/len(rot_y_buf)
-            rot_x = sum(rot_x_buf)/len(rot_x_buf)
+            stabilized = ar_stabilizer.smooth_scale_rotation(
+                lm1, f1, idx1, lm2, f2, idx2, w, h, shape_scale, rot_x, rot_y
+            )
+            if stabilized is not None:
+                shape_scale, rot_x, rot_y = stabilized
 
         elif index1 and index2:
-            move_buf_x.append(mid_x)
-            move_buf_y.append(mid_y)
-            shape_pos[0] = sum(move_buf_x)/len(move_buf_x)
-            shape_pos[1] = sum(move_buf_y)/len(move_buf_y)
+            c1 = ar_stabilizer.get_hand_center(idx1, lm1[9])
+            c2 = ar_stabilizer.get_hand_center(idx2, lm2[9])
+            midpoint = (c1 + c2) / 2.0
+            shape_pos = ar_stabilizer.smooth_position(midpoint, shape_pos)
 
         else:
-            prev_two_hand_dist = dist
+            c1 = ar_stabilizer.get_hand_center(idx1, lm1[9])
+            c2 = ar_stabilizer.get_hand_center(idx2, lm2[9])
+            ar_stabilizer.prev_two_hand_dist = np.linalg.norm(c1 - c2)
 
     else:
         (lm, f, _) = hands_info[0]
         if f == [0,1,0,0,0]:
-            move_buf_x.append(lm[9][0])
-            move_buf_y.append(lm[9][1])
-            shape_pos[0] = sum(move_buf_x)/len(move_buf_x)
-            shape_pos[1] = sum(move_buf_y)/len(move_buf_y)
+            shape_pos = ar_stabilizer.smooth_position(lm[9], shape_pos)
 
 # ===== Mouse Mode =====
 def smooth_cursor(x, y, w, h):
@@ -354,14 +452,13 @@ def detect_mouse_gesture(frame,lm,w,h,is_left):
         dragging=False
         return
 
-    import time
     global last_click_time
 
     if pinch_idx and not pinch_mid:
         if time.time() - last_click_time > CLICK_COOLDOWN:
             mouse.click(Button.left)
             last_click_time = time.time()
-
+            left_clicked=True
         else:
             left_clicked=False
 
@@ -520,7 +617,7 @@ def extract_json_from_text(raw_text):
         return None
 
 def set_builtin_shape(name):
-    #Declare global variables
+    global shape_vertices, shape_edges, current_shape_name, last_ai_status
     name=name.lower()
     if "cube" in name:
         shape_vertices=cube_vertices_base.copy()
@@ -557,7 +654,8 @@ def set_builtin_shape(name):
     return False
 
 def generate_shape_from_text(text):
-    #Declare global variables
+    global last_ai_command, last_ai_status
+    global shape_vertices, shape_edges, current_shape_name, current_mode
     last_ai_command = text.strip()
     t = last_ai_command.strip().lower()
 
@@ -789,8 +887,7 @@ def handle_drawing_mode(frame, results, w, h):
 
 
 def main():
-    #Declare global variables
-    drawing_mode = False
+    global rot_y
 
     cap = cv2.VideoCapture(CAMERA_SOURCE)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
