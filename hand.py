@@ -11,6 +11,31 @@ import time
 import json
 import re
 #Add All The Variables Here
+#Mouse state globals
+CLICK_COOLDOWN = 0.4
+last_click_time = 0
+
+prev_x, prev_y = 0, 0
+
+dragging = False
+left_clicked = False
+right_clicked = False
+
+# ===== DRAWING GLOBALS (PREVENT CRASH) =====
+color = [(255,0,0),(0,255,0),(0,0,255),(0,255,255)]
+bpoints=[deque(maxlen=1024)]
+gpoints=[deque(maxlen=1024)]
+rpoints=[deque(maxlen=1024)]
+ypoints=[deque(maxlen=1024)]
+blue_index=0
+green_index=0
+red_index=0
+yellow_index=0
+colorIndex=0
+
+drawing_filters = {}
+draw_points = []
+
 # ===== OPTIONAL: Gemini + Speech Recognition =====
 try:
     import google.generativeai as genai
@@ -31,7 +56,7 @@ except Exception:
 
 
 # ===== CAMERA CONFIG =====
-CAMERA_SOURCE = "0"  # Change to video file path for pre-recorded video
+CAMERA_SOURCE = 0  # must be int, not string
 current_mode = "CUBE"
 auto_rotate = False
 
@@ -337,6 +362,52 @@ def smooth_cursor(x, y, w, h):
 
 def detect_mouse_gesture(frame,lm,w,h,is_left):
     global left_clicked,right_clicked,dragging
+    global last_click_time, prev_x, prev_y
+
+    if not lm or len(lm) < 9:
+        return
+
+    screen_w, screen_h = pyautogui.size()
+
+    # Convert camera coordinates to screen coordinates
+    cam_x, cam_y = lm[8][0], lm[8][1]
+
+    screen_x = int((cam_x / w) * screen_w)
+    screen_y = int((cam_y / h) * screen_h)
+
+    # Clamp to screen
+    screen_x = max(0, min(screen_w - 1, screen_x))
+    screen_y = max(0, min(screen_h - 1, screen_y))
+
+    # Smooth movement
+    curr_x = prev_x + (screen_x - prev_x) / 5
+    curr_y = prev_y + (screen_y - prev_y) / 5
+
+    pyautogui.moveTo(curr_x, curr_y)
+
+    prev_x, prev_y = curr_x, curr_y
+
+    # Distance between index tip and thumb tip
+    x1, y1 = lm[8]
+    x2, y2 = lm[4]
+
+    distance = math.hypot(x2 - x1, y2 - y1)
+
+    # Left Click
+    if distance < 30:   # Pixel threshold (adjust if needed)
+        if time.time() - last_click_time > CLICK_COOLDOWN:
+            pyautogui.click()
+            last_click_time = time.time()
+
+    # Drag
+    if distance < 25:
+        if not dragging:
+            pyautogui.mouseDown()
+            dragging = True
+    else:
+        if dragging:
+            pyautogui.mouseUp()
+            dragging = False
 
     fingers=finger_states(lm,is_left)
     pinch_idx=is_pinch(lm[8],lm[4],lm)
@@ -354,8 +425,7 @@ def detect_mouse_gesture(frame,lm,w,h,is_left):
         dragging=False
         return
 
-    import time
-    global last_click_time
+
 
     if pinch_idx and not pinch_mid:
         if time.time() - last_click_time > CLICK_COOLDOWN:
@@ -521,6 +591,7 @@ def extract_json_from_text(raw_text):
 
 def set_builtin_shape(name):
     #Declare global variables
+    global shape_vertices, shape_edges, current_shape_name, last_ai_status
     name=name.lower()
     if "cube" in name:
         shape_vertices=cube_vertices_base.copy()
@@ -557,7 +628,9 @@ def set_builtin_shape(name):
     return False
 
 def generate_shape_from_text(text):
-    #Declare global variables
+    global shape_vertices, shape_edges
+    global current_shape_name, last_ai_status
+    global current_mode, last_ai_command
     last_ai_command = text.strip()
     t = last_ai_command.strip().lower()
 
@@ -760,7 +833,7 @@ def handle_air_draw_mode(frame, results, w, h):
                     cv2.line(frame,points[i][j][k-1],points[i][j][k],color[i],5)
 
 def handle_drawing_mode(frame, results, w, h):
-    global drawing_mode
+    global drawing_mode, draw_points
     
     if not results.multi_hand_landmarks:
         return
@@ -790,8 +863,8 @@ def handle_drawing_mode(frame, results, w, h):
 
 def main():
     #Declare global variables
-    drawing_mode = False
-
+    global rot_y, auto_rotate, current_mode
+    
     cap = cv2.VideoCapture(CAMERA_SOURCE)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
@@ -829,7 +902,8 @@ def main():
 
     while True:
         ok, frame = cap.read()
-        if not ok: break
+        if not ok or frame is None:
+            continue
         frame = cv2.flip(frame,1)
 
         h,w,_ = frame.shape
@@ -874,7 +948,22 @@ def main():
         draw_mode_buttons(frame)
 
         cv2.imshow("AR + Mouse + AI Shapes", frame)
+
     #Make Cases For Perfoming Which Mode Here
+        key = cv2.waitKey(1) & 0xFF
+
+        if key == ord('1'):
+            current_mode = "CUBE"
+        elif key == ord('2'):
+            current_mode = "AI"
+        elif key == ord('3'):
+            current_mode = "MOUSE"
+        elif key == ord('4'):
+            current_mode = "DRAW"
+        elif key == ord('a'):
+            auto_rotate = not auto_rotate
+        elif key == ord('q'):
+            break
 
     cap.release()
     cv2.destroyAllWindows()
