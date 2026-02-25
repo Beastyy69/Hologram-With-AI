@@ -40,11 +40,11 @@ draw_points = []
 try:
     import google.generativeai as genai
     GEMINI_AVAILABLE = True
-    GENAI_API_KEY = "GEMINI_API_KEY_HERE"  # Replace with your actual Gemini API key
-    if GENAI_API_KEY and GENAI_API_KEY != "YOUR_GEMINI_API_KEY_HERE":
+    GENAI_API_KEY = "Generate_your_api"  # Replace with your actual Gemini API key
+    if GENAI_API_KEY and GENAI_API_KEY != "Generate_your_api":
         genai.configure(api_key=GENAI_API_KEY)
     else:
-        GEMINI_AVAILABLE = False
+        GEMINI_AVAILABLE = True
 except Exception:
     GEMINI_AVAILABLE = False
 
@@ -80,6 +80,8 @@ pos_history = deque(maxlen=6)
 left_clicked = False
 right_clicked = False
 dragging = False
+last_click_time = 0
+CLICK_COOLDOWN = 0.3  # seconds between clicks
 
 shape_pos = [320, 240]
 shape_scale = 40.0
@@ -90,6 +92,24 @@ rot_y_buf = deque(maxlen=6)
 scale_buf = deque(maxlen=6)
 move_buf_x = deque(maxlen=6)
 move_buf_y = deque(maxlen=6)
+
+# ===== Advanced Gesture Control State Variables =====
+frozen = False
+grabbing = False
+rotation_only_mode = False
+interaction_mode = "MANIPULATION"
+grab_offset_x = 0
+grab_offset_y = 0
+
+last_fist_time = 0
+FIST_DEBOUNCE = 0.5
+
+wave_history_x = deque(maxlen=10)
+wave_history_y = deque(maxlen=10)
+last_wave_time = 0
+WAVE_COOLDOWN = 1.0
+wave_direction_changes = 0
+wave_prev_position = None
 
 prev_two_hand_dist = None
 prev_center1 = None
@@ -234,24 +254,88 @@ def adaptive_pinch_threshold(lm):
 def is_pinch(p1,p2,lm):
     return np.linalg.norm(np.array(p1)-np.array(p2)) < adaptive_pinch_threshold(lm)
 
+# ===== Advanced Gesture Detection Functions =====
+def is_fist(fingers):
+    """Detect fist gesture - all fingers closed [0,0,0,0,0]"""
+    return fingers == [0,0,0,0,0]
+
+def is_two_fingers(fingers):
+    """Detect two extended fingers - index and middle fingers up"""
+    return fingers == [0,1,1,0,0]
+
+def detect_wave_gesture(lm, fingers):
+    """Detect wave gesture to switch interaction modes"""
+    global wave_history_x, wave_history_y, last_wave_time, wave_prev_position
+    global wave_direction_changes
+    
+    current_time = time.time()
+    
+    if fingers != [1,1,1,1,1]:
+        wave_history_x.clear()
+        wave_history_y.clear()
+        wave_prev_position = None
+        wave_direction_changes = 0
+        return False
+    
+    wrist = lm[0]
+    wave_history_x.append(wrist[0])
+    wave_history_y.append(wrist[1])
+    
+    if len(wave_history_x) < 10:
+        return False
+    
+    dx = wave_history_x[-1] - wave_history_x[-5]
+    
+    if wave_prev_position is not None:
+        if dx > 30 and wave_prev_position < 0:
+            wave_direction_changes += 1
+        elif dx < -30 and wave_prev_position > 0:
+            wave_direction_changes += 1
+    
+    wave_prev_position = dx
+    
+    if wave_direction_changes >= 3:
+        if current_time - last_wave_time > WAVE_COOLDOWN:
+            global interaction_mode
+            modes = ["MANIPULATION", "PRECISION", "VIEW"]
+            current_idx = modes.index(interaction_mode) if interaction_mode in modes else 0
+            interaction_mode = modes[(current_idx + 1) % len(modes)]
+            last_wave_time = current_time
+            wave_direction_changes = 0
+            return True
+    
+    return False
+
 # Drawing Shape 
 def draw_shape(frame):
     global shape_vertices, shape_edges, rot_x, rot_y, rot_z
     if shape_vertices is None or len(shape_vertices) == 0:
         return
-    R = rotation_matrix(rot_x,rot_y,rot_z)
-    v = (shape_vertices @ R.T) * shape_scale
-    v[:,1] *= -1  
 
-    v[:,0] += shape_pos[0]
-    v[:,1] += shape_pos[1]
+    R = rotation_matrix(rot_x, rot_y, rot_z)
+    v3d = (shape_vertices @ R.T) * shape_scale
 
-    v = v.astype(int)
-    for e in shape_edges:
-        a,b = e
-        if a < 0 or b < 0 or a >= len(v) or b >= len(v): continue
-        cv2.line(frame, tuple(v[a][:2]), tuple(v[b][:2]), (0,255,0), 2)
+    # Flip Y so it feels natural in OpenCV
+    v3d[:, 1] *= -1
 
+    # Perspective projection settings
+    distance = 400  # camera distance (bigger = less distortion)
+
+    projected = []
+    for x, y, z in v3d:
+        z = z + distance
+        if z == 0:
+            z = 0.0001
+
+        factor = distance / z
+        x2d = int(x * factor + shape_pos[0])
+        y2d = int(y * factor + shape_pos[1])
+        projected.append((x2d, y2d))
+
+    for a, b in shape_edges:
+        if a < 0 or b < 0 or a >= len(projected) or b >= len(projected):
+            continue
+        cv2.line(frame, projected[a], projected[b], (0, 255, 0), 2)
 # ====== AR GESTURES (FIXED - NO RESET) ======
 def handle_ar_gestures(frame, results):
     global shape_pos, shape_scale, rot_x, rot_y, prev_two_hand_dist
@@ -266,6 +350,45 @@ def handle_ar_gestures(frame, results):
         mh = results.multi_handedness[i]
         is_left = get_hand_side_from_mh(mh)
         fingers = finger_states(lm, is_left)
+        
+        # ===== Advanced Gesture Handling =====
+        # Check for fist gesture to freeze shape
+        if is_fist(fingers):
+            global frozen, last_fist_time
+            current_time = time.time()
+            if not frozen and current_time - last_fist_time > FIST_DEBOUNCE:
+                frozen = True
+                last_fist_time = current_time
+            elif frozen and current_time - last_fist_time > FIST_DEBOUNCE:
+                frozen = False
+                last_fist_time = current_time
+        
+        # Check for two fingers for rotation-only mode
+        if is_two_fingers(fingers):
+            global rotation_only_mode
+            rotation_only_mode = True
+        else:
+            rotation_only_mode = False
+        
+        # Check for wave gesture to switch modes
+        if detect_wave_gesture(lm, fingers):
+            print(f"Mode switched to: {interaction_mode}")
+        
+        # Apply interaction mode restrictions
+        if frozen:
+            return  # Don't process any movement if frozen
+        
+        if rotation_only_mode:
+            # Only allow rotation, disable scale and move
+            pass
+        
+        # Apply interaction mode multipliers
+        mode_multiplier = 1.0
+        if interaction_mode == "PRECISION":
+            mode_multiplier = 0.5
+        elif interaction_mode == "VIEW":
+            return  # No interactions allowed in VIEW mode
+        
         hands_info.append((lm, fingers, i))
 
     if len(hands_info) == 2:
@@ -744,7 +867,9 @@ def voice_listener():
                 pass
 
 def draw_mode_buttons(frame):
-    global BUTTONS
+    global BUTTONS,current_mode
+    color = [(255,0,0), (0,255,0), (0,0,255), (0,255,255)]
+
     h,w = frame.shape[:2]
     BUTTONS = {
    # Mode Buttons Add Here
@@ -775,11 +900,29 @@ def on_mouse(event,x,y,flags,param):
                 current_mode=mode
                 break
 def handle_air_draw_mode(frame, results, w, h):
-    global bpoints,gpoints,rpoints,ypoints
-    global blue_index,green_index,red_index,yellow_index,colorIndex
-
+    global drawing_filters
+    global bpoints, gpoints, rpoints, ypoints
+    global blue_index, green_index, red_index, yellow_index, colorIndex
+    global colors
     if not results.multi_hand_landmarks:
         return
+    
+    # ===== DRAW MODE GLOBALS =====
+    drawing_filters = {}
+
+    bpoints = [deque(maxlen=1024)]
+    gpoints = [deque(maxlen=1024)]
+    rpoints = [deque(maxlen=1024)]
+    ypoints = [deque(maxlen=1024)]
+
+    blue_index = 0
+    green_index = 0
+    red_index = 0
+    yellow_index = 0
+
+    colorIndex = 0
+    colors = [(255,0,0), (0,255,0), (0,0,255), (0,255,255)]
+
 
     landmarks = results.multi_hand_landmarks[0]
     lm = [(int(pt.x*w), int(pt.y*h)) for pt in landmarks.landmark]
@@ -830,7 +973,8 @@ def handle_air_draw_mode(frame, results, w, h):
         for j in range(len(points[i])):
             for k in range(1,len(points[i][j])):
                 if points[i][j][k] and points[i][j][k-1]:
-                    cv2.line(frame,points[i][j][k-1],points[i][j][k],color[i],5)
+                    cv2.line(frame, points[i][j][k-1], points[i][j][k], colors[i], 5)
+
 
 def handle_drawing_mode(frame, results, w, h):
     global drawing_mode, draw_points
@@ -863,8 +1007,10 @@ def handle_drawing_mode(frame, results, w, h):
 
 def main():
     #Declare global variables
-    global rot_y, auto_rotate, current_mode
+    global current_mode, auto_rotate
     
+    drawing_mode = False
+
     cap = cv2.VideoCapture(CAMERA_SOURCE)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
@@ -873,6 +1019,7 @@ def main():
         return
 
     cv2.namedWindow("AR + Mouse + AI Shapes")
+    
     cv2.setMouseCallback("AR + Mouse + AI Shapes", on_mouse)
 
     if SR_AVAILABLE:
@@ -940,6 +1087,20 @@ def main():
 
         cv2.putText(frame, f"Mode: {current_mode}", (10,30), cv2.FONT_HERSHEY_PLAIN, 2, (0,255,0), 2)
         cv2.putText(frame, f"Shape: {current_shape_name}", (10,55), cv2.FONT_HERSHEY_PLAIN, 1.4, (0,255,255), 2)
+        
+        # ===== Visual Feedback for Advanced Gestures =====
+        # Display frozen status
+        if frozen:
+            cv2.putText(frame, "FROZEN", (w-150, 30), cv2.FONT_HERSHEY_PLAIN, 1.5, (0, 0, 255), 2)
+
+        # Display interaction mode
+        mode_color = (0, 255, 0) if interaction_mode == "MANIPULATION" else (0, 255, 255) if interaction_mode == "PRECISION" else (255, 255, 0)
+        cv2.putText(frame, f"Interaction: {interaction_mode}", (10, h-60), cv2.FONT_HERSHEY_PLAIN, 1.2, mode_color, 2)
+
+        # Display rotation-only mode status
+        if rotation_only_mode:
+            cv2.putText(frame, "ROTATION ONLY", (10, h-35), cv2.FONT_HERSHEY_PLAIN, 1.2, (255, 0, 255), 2)
+        
         if last_ai_command:
             cv2.putText(frame, f"Voice: {last_ai_command}", (10,80), cv2.FONT_HERSHEY_PLAIN, 1.2, (255,255,0), 2)
         if last_ai_status:
@@ -948,7 +1109,19 @@ def main():
         draw_mode_buttons(frame)
 
         cv2.imshow("AR + Mouse + AI Shapes", frame)
-
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q'):
+            break
+        elif key == ord('a'):
+            auto_rotate = not auto_rotate
+        elif key == ord('1'):
+            current_mode = "CUBE"
+        elif key == ord('2'):
+            current_mode = "MOUSE"
+        elif key == ord('3'):
+            current_mode = "DRAW"
+        elif key == ord('4'):
+            current_mode = "AI"
     #Make Cases For Perfoming Which Mode Here
         key = cv2.waitKey(1) & 0xFF
 
