@@ -1,7 +1,12 @@
 import cv2
 import mediapipe as mp
+from mediapipe import Image, ImageFormat
+from mediapipe.tasks import python as mp_python
+from mediapipe.tasks.python import vision as mp_vision
+from mediapipe.tasks.python.components import containers as mp_containers
 import numpy as np
 import math
+import os
 from collections import deque
 from pynput.mouse import Button, Controller
 import pyautogui
@@ -60,15 +65,60 @@ CAMERA_SOURCE = 0  # must be int, not string
 current_mode = "CUBE"
 auto_rotate = False
 
-# ===== MediaPipe Hands =====
-mpHands = mp.solutions.hands
-hands = mpHands.Hands(
-    max_num_hands=2,
-    model_complexity=0,
-    min_detection_confidence=0.6,
-    min_tracking_confidence=0.7
+# ===== MediaPipe Hands (Tasks API - compatible with mediapipe 0.10.x) =====
+_MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'hand_landmarker.task')
+if not os.path.exists(_MODEL_PATH):
+    import urllib.request
+    print("Downloading hand landmarker model...")
+    urllib.request.urlretrieve(
+        'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task',
+        _MODEL_PATH
+    )
+    print("Model downloaded.")
+
+_base_options = mp_python.BaseOptions(model_asset_path=_MODEL_PATH)
+_hand_options = mp_vision.HandLandmarkerOptions(
+    base_options=_base_options,
+    num_hands=2,
+    min_hand_detection_confidence=0.6,
+    min_hand_presence_confidence=0.6,
+    min_tracking_confidence=0.7,
+    running_mode=mp_vision.RunningMode.VIDEO
 )
-draw = mp.solutions.drawing_utils
+hands = mp_vision.HandLandmarker.create_from_options(_hand_options)
+_frame_timestamp_ms = 0
+
+# MediaPipe hand landmark connections (same as old solutions API)
+_HAND_CONNECTIONS = [
+    (0,1),(1,2),(2,3),(3,4),
+    (0,5),(5,6),(6,7),(7,8),
+    (5,9),(9,10),(10,11),(11,12),
+    (9,13),(13,14),(14,15),(15,16),
+    (13,17),(17,18),(18,19),(19,20),(0,17)
+]
+
+def draw_landmarks_on_frame(frame, lm_list):
+    """Draw hand landmarks and connections on frame."""
+    for p1_idx, p2_idx in _HAND_CONNECTIONS:
+        if p1_idx < len(lm_list) and p2_idx < len(lm_list):
+            cv2.line(frame, lm_list[p1_idx], lm_list[p2_idx], (0, 200, 100), 2)
+    for pt in lm_list:
+        cv2.circle(frame, pt, 4, (255, 255, 255), -1)
+        cv2.circle(frame, pt, 4, (0, 150, 80), 1)
+
+# Compatibility shim: results object mirroring old API structure
+class _HandResults:
+    def __init__(self, detection_result, w, h):
+        self.multi_hand_landmarks = []
+        self.multi_handedness = []
+        if not detection_result or not detection_result.hand_landmarks:
+            return
+        for i, hand_lms in enumerate(detection_result.hand_landmarks):
+            lm_list = [(int(lm.x * w), int(lm.y * h)) for lm in hand_lms]
+            self.multi_hand_landmarks.append(lm_list)
+        for handedness in detection_result.handedness:
+            self.multi_handedness.append(handedness)
+
 
 mouse = Controller()
 pyautogui.FAILSAFE = False
@@ -214,7 +264,15 @@ def rotation_matrix(rx, ry, rz):
     return Rz @ Ry @ Rx
 
 def get_hand_side_from_mh(mh):
-    return mh.classification[0].label == "Left"
+    # New Tasks API: mh is a list of Category objects with .category_name
+    # Old API: mh.classification[0].label
+    try:
+        return mh[0].category_name == "Left"
+    except (TypeError, IndexError, AttributeError):
+        try:
+            return mh.classification[0].label == "Left"
+        except Exception:
+            return False
 
 def finger_states(lm, is_left):
     fingers=[0]*5
@@ -234,23 +292,127 @@ def adaptive_pinch_threshold(lm):
 def is_pinch(p1,p2,lm):
     return np.linalg.norm(np.array(p1)-np.array(p2)) < adaptive_pinch_threshold(lm)
 
-# Drawing Shape 
+# ===== Face Definitions for Back-Face Culling =====
+# Each face is (vertex_indices, outward_normal_sign)
+# Faces are defined as lists of 3+ vertex indices (CCW from outside)
+cube_faces = [
+    [0,1,2,3],  # front  z=-1
+    [4,7,6,5],  # back   z=+1
+    [0,3,7,4],  # left   x=-1
+    [1,5,6,2],  # right  x=+1
+    [0,4,5,1],  # bottom y=-1
+    [3,2,6,7],  # top    y=+1
+]
+pyramid_faces = [
+    [0,1,2,3],  # base
+    [0,1,4],    # front
+    [1,2,4],    # right
+    [2,3,4],    # back
+    [3,0,4],    # left
+]
+
+# Edge-to-face mapping for culling: edge -> list of face indices it belongs to
+def _build_edge_face_map(faces, edges):
+    edge_faces = {}
+    for fi, face in enumerate(faces):
+        n = len(face)
+        for i in range(n):
+            v0, v1 = face[i], face[(i+1) % n]
+            key = (min(v0,v1), max(v0,v1))
+            edge_faces.setdefault(key, []).append(fi)
+    result = {}
+    for ei, (a, b) in enumerate(edges):
+        key = (min(a,b), max(a,b))
+        result[ei] = edge_faces.get(key, [])
+    return result
+
+_cube_edge_face_map = _build_edge_face_map(cube_faces, cube_edges_base)
+_pyramid_edge_face_map = _build_edge_face_map(pyramid_faces, pyramid_edges_base)
+
+def _face_normal(verts_3d, face_indices):
+    """Compute face normal from first 3 vertices of a face (right-hand rule)."""
+    v0 = verts_3d[face_indices[0]]
+    v1 = verts_3d[face_indices[1]]
+    v2 = verts_3d[face_indices[2]]
+    a = v1 - v0
+    b = v2 - v0
+    normal = np.cross(a, b)
+    norm = np.linalg.norm(normal)
+    return normal / norm if norm > 1e-9 else normal
+
+CAMERA_DIR = np.array([0.0, 0.0, -1.0])  # camera looks in -Z
+
+# Drawing Shape — with Back-Face Culling & Perspective Projection
 def draw_shape(frame):
     global shape_vertices, shape_edges, rot_x, rot_y, rot_z
     if shape_vertices is None or len(shape_vertices) == 0:
         return
-    R = rotation_matrix(rot_x,rot_y,rot_z)
-    v = (shape_vertices @ R.T) * shape_scale
-    v[:,1] *= -1  
 
-    v[:,0] += shape_pos[0]
-    v[:,1] += shape_pos[1]
+    h_frame, w_frame = frame.shape[:2]
+    cx, cy = shape_pos[0], shape_pos[1]
+    FOCAL = 800.0   # pseudo focal length — higher = less distortion
 
-    v = v.astype(int)
-    for e in shape_edges:
-        a,b = e
-        if a < 0 or b < 0 or a >= len(v) or b >= len(v): continue
-        cv2.line(frame, tuple(v[a][:2]), tuple(v[b][:2]), (0,255,0), 2)
+    R = rotation_matrix(rot_x, rot_y, rot_z)
+
+    # Rotate all vertices; keep full 3D coords for normal calc
+    verts_rot = (shape_vertices @ R.T)  # shape (N,3)
+
+    # Perspective projection: project 3D -> 2D with depth
+    # Move shape away from camera by focal length
+    Z_OFFSET = FOCAL / shape_scale + 2.0
+    proj = []
+    for v in verts_rot:
+        z = v[2] + Z_OFFSET
+        if abs(z) < 0.001:
+            z = 0.001
+        sx = int(cx + (v[0] * shape_scale * FOCAL / (z * shape_scale))  * shape_scale)
+        sy = int(cy - (v[1] * shape_scale * FOCAL / (z * shape_scale))  * shape_scale)
+        proj.append((sx, sy))
+    proj = np.array(proj)
+
+    # Determine which faces are visible (dot product with camera dir)
+    name_lower = current_shape_name.lower()
+    if "cube" in name_lower:
+        faces, edge_face_map = cube_faces, _cube_edge_face_map
+    elif "pyramid" in name_lower:
+        faces, edge_face_map = pyramid_faces, _pyramid_edge_face_map
+    else:
+        faces, edge_face_map = None, None
+
+    if faces is not None:
+        # Back-face culling: compute visibility for each face
+        face_visible = []
+        for face in faces:
+            normal = _face_normal(verts_rot, face)
+            dot = np.dot(normal, CAMERA_DIR)
+            face_visible.append(dot < 0)  # visible if normal points toward camera
+
+        # Draw only edges where AT LEAST ONE adjacent face is visible
+        for ei, e in enumerate(shape_edges):
+            a, b = e
+            if a < 0 or b < 0 or a >= len(proj) or b >= len(proj):
+                continue
+            adj_faces = edge_face_map.get(ei, [])
+            if not adj_faces:
+                # No face info — draw always (safety)
+                cv2.line(frame, tuple(proj[a]), tuple(proj[b]), (0, 255, 0), 2)
+                continue
+            # Silhouette edge: one face visible, one not → draw as outline
+            vis_flags = [face_visible[fi] for fi in adj_faces]
+            any_visible = any(vis_flags)
+            all_visible = all(vis_flags)
+            if any_visible:
+                # Silhouette edge gets brighter color
+                color = (0, 255, 0) if all_visible else (100, 255, 180)
+                cv2.line(frame, tuple(proj[a]), tuple(proj[b]), color, 2)
+    else:
+        # Generic shapes (letters, numbers, spheres, custom AI): draw all edges
+        for e in shape_edges:
+            a, b = e
+            if a < 0 or b < 0 or a >= len(proj) or b >= len(proj):
+                continue
+            cv2.line(frame, tuple(proj[a]), tuple(proj[b]), (0, 255, 0), 2)
+
 
 # ====== AR GESTURES (FIXED - NO RESET) ======
 def handle_ar_gestures(frame, results):
@@ -261,8 +423,9 @@ def handle_ar_gestures(frame, results):
         return
 
     hands_info = []
-    for i, hand in enumerate(results.multi_hand_landmarks):
-        lm = [(int(l.x*w), int(l.y*h)) for l in hand.landmark]
+    for i, lm_list in enumerate(results.multi_hand_landmarks):
+        # lm_list is already a list of (int, int) pixel tuples from _HandResults shim
+        lm = lm_list
         mh = results.multi_handedness[i]
         is_left = get_hand_side_from_mh(mh)
         fingers = finger_states(lm, is_left)
@@ -447,12 +610,11 @@ def detect_mouse_gesture(frame,lm,w,h,is_left):
 
 def handle_mouse_mode(frame,results,w,h):
     if not results.multi_hand_landmarks: return
-    hand=results.multi_hand_landmarks[0]
-    mh=results.multi_handedness[0]
-    is_left=get_hand_side_from_mh(mh)
-    lm=[(int(l.x*w),int(l.y*h)) for l in hand.landmark]
+    lm = results.multi_hand_landmarks[0]  # already (int, int) tuples
+    mh = results.multi_handedness[0]
+    is_left = get_hand_side_from_mh(mh)
     detect_mouse_gesture(frame,lm,w,h,is_left)
-    draw.draw_landmarks(frame,hand,mpHands.HAND_CONNECTIONS)
+    draw_landmarks_on_frame(frame, lm)
 
 # ===== IMPROVED Letter/Number Template Generation (3D EXTRUSION) =====
 def resample_contour_pts(pts, n):
@@ -781,9 +943,8 @@ def handle_air_draw_mode(frame, results, w, h):
     if not results.multi_hand_landmarks:
         return
 
-    landmarks = results.multi_hand_landmarks[0]
-    lm = [(int(pt.x*w), int(pt.y*h)) for pt in landmarks.landmark]
-    draw.draw_landmarks(frame, landmarks, mpHands.HAND_CONNECTIONS)
+    lm = results.multi_hand_landmarks[0]  # already (int, int) tuples from _HandResults
+    draw_landmarks_on_frame(frame, lm)
 
     hand_id = 0  # Only first hand used for drawing
     if hand_id not in drawing_filters:
@@ -858,7 +1019,7 @@ def handle_drawing_mode(frame, results, w, h):
         if draw_points[i] is not None and draw_points[i-1] is not None:
             cv2.line(frame, draw_points[i-1], draw_points[i], (0,0,255), 4)
 
-    draw.draw_landmarks(frame, hand, mpHands.HAND_CONNECTIONS)
+    draw_landmarks_on_frame(frame, lm)
 
 
 def main():
@@ -908,7 +1069,13 @@ def main():
 
         h,w,_ = frame.shape
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = hands.process(rgb)
+
+        # New Tasks API: detect_for_video with monotonically increasing timestamp
+        global _frame_timestamp_ms
+        _frame_timestamp_ms += 33  # ~30fps
+        mp_image = Image(image_format=ImageFormat.SRGB, data=rgb)
+        _detection = hands.detect_for_video(mp_image, _frame_timestamp_ms)
+        results = _HandResults(_detection, w, h)
 
         if current_mode=="AI":
             while not command_queue.empty():
@@ -919,8 +1086,8 @@ def main():
             draw_shape(frame)
             if results.multi_hand_landmarks:
                 handle_ar_gestures(frame, results)
-                for hand in results.multi_hand_landmarks:
-                    draw.draw_landmarks(frame, hand, mpHands.HAND_CONNECTIONS)
+                for lm_list in results.multi_hand_landmarks:
+                    draw_landmarks_on_frame(frame, lm_list)
 
         elif current_mode=="MOUSE":
             pad_left = int((w - (w * TRACKPAD_W)) / 2)
