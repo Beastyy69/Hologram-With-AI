@@ -1,5 +1,6 @@
 import cv2
 import mediapipe as mp
+from mediapipe import Image, ImageFormat
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision as mp_vision
 from mediapipe.tasks.python.components import containers as mp_containers
@@ -291,23 +292,127 @@ def adaptive_pinch_threshold(lm):
 def is_pinch(p1,p2,lm):
     return np.linalg.norm(np.array(p1)-np.array(p2)) < adaptive_pinch_threshold(lm)
 
-# Drawing Shape 
+# ===== Face Definitions for Back-Face Culling =====
+# Each face is (vertex_indices, outward_normal_sign)
+# Faces are defined as lists of 3+ vertex indices (CCW from outside)
+cube_faces = [
+    [0,1,2,3],  # front  z=-1
+    [4,7,6,5],  # back   z=+1
+    [0,3,7,4],  # left   x=-1
+    [1,5,6,2],  # right  x=+1
+    [0,4,5,1],  # bottom y=-1
+    [3,2,6,7],  # top    y=+1
+]
+pyramid_faces = [
+    [0,1,2,3],  # base
+    [0,1,4],    # front
+    [1,2,4],    # right
+    [2,3,4],    # back
+    [3,0,4],    # left
+]
+
+# Edge-to-face mapping for culling: edge -> list of face indices it belongs to
+def _build_edge_face_map(faces, edges):
+    edge_faces = {}
+    for fi, face in enumerate(faces):
+        n = len(face)
+        for i in range(n):
+            v0, v1 = face[i], face[(i+1) % n]
+            key = (min(v0,v1), max(v0,v1))
+            edge_faces.setdefault(key, []).append(fi)
+    result = {}
+    for ei, (a, b) in enumerate(edges):
+        key = (min(a,b), max(a,b))
+        result[ei] = edge_faces.get(key, [])
+    return result
+
+_cube_edge_face_map = _build_edge_face_map(cube_faces, cube_edges_base)
+_pyramid_edge_face_map = _build_edge_face_map(pyramid_faces, pyramid_edges_base)
+
+def _face_normal(verts_3d, face_indices):
+    """Compute face normal from first 3 vertices of a face (right-hand rule)."""
+    v0 = verts_3d[face_indices[0]]
+    v1 = verts_3d[face_indices[1]]
+    v2 = verts_3d[face_indices[2]]
+    a = v1 - v0
+    b = v2 - v0
+    normal = np.cross(a, b)
+    norm = np.linalg.norm(normal)
+    return normal / norm if norm > 1e-9 else normal
+
+CAMERA_DIR = np.array([0.0, 0.0, -1.0])  # camera looks in -Z
+
+# Drawing Shape — with Back-Face Culling & Perspective Projection
 def draw_shape(frame):
     global shape_vertices, shape_edges, rot_x, rot_y, rot_z
     if shape_vertices is None or len(shape_vertices) == 0:
         return
-    R = rotation_matrix(rot_x,rot_y,rot_z)
-    v = (shape_vertices @ R.T) * shape_scale
-    v[:,1] *= -1  
 
-    v[:,0] += shape_pos[0]
-    v[:,1] += shape_pos[1]
+    h_frame, w_frame = frame.shape[:2]
+    cx, cy = shape_pos[0], shape_pos[1]
+    FOCAL = 800.0   # pseudo focal length — higher = less distortion
 
-    v = v.astype(int)
-    for e in shape_edges:
-        a,b = e
-        if a < 0 or b < 0 or a >= len(v) or b >= len(v): continue
-        cv2.line(frame, tuple(v[a][:2]), tuple(v[b][:2]), (0,255,0), 2)
+    R = rotation_matrix(rot_x, rot_y, rot_z)
+
+    # Rotate all vertices; keep full 3D coords for normal calc
+    verts_rot = (shape_vertices @ R.T)  # shape (N,3)
+
+    # Perspective projection: project 3D -> 2D with depth
+    # Move shape away from camera by focal length
+    Z_OFFSET = FOCAL / shape_scale + 2.0
+    proj = []
+    for v in verts_rot:
+        z = v[2] + Z_OFFSET
+        if abs(z) < 0.001:
+            z = 0.001
+        sx = int(cx + (v[0] * shape_scale * FOCAL / (z * shape_scale))  * shape_scale)
+        sy = int(cy - (v[1] * shape_scale * FOCAL / (z * shape_scale))  * shape_scale)
+        proj.append((sx, sy))
+    proj = np.array(proj)
+
+    # Determine which faces are visible (dot product with camera dir)
+    name_lower = current_shape_name.lower()
+    if "cube" in name_lower:
+        faces, edge_face_map = cube_faces, _cube_edge_face_map
+    elif "pyramid" in name_lower:
+        faces, edge_face_map = pyramid_faces, _pyramid_edge_face_map
+    else:
+        faces, edge_face_map = None, None
+
+    if faces is not None:
+        # Back-face culling: compute visibility for each face
+        face_visible = []
+        for face in faces:
+            normal = _face_normal(verts_rot, face)
+            dot = np.dot(normal, CAMERA_DIR)
+            face_visible.append(dot < 0)  # visible if normal points toward camera
+
+        # Draw only edges where AT LEAST ONE adjacent face is visible
+        for ei, e in enumerate(shape_edges):
+            a, b = e
+            if a < 0 or b < 0 or a >= len(proj) or b >= len(proj):
+                continue
+            adj_faces = edge_face_map.get(ei, [])
+            if not adj_faces:
+                # No face info — draw always (safety)
+                cv2.line(frame, tuple(proj[a]), tuple(proj[b]), (0, 255, 0), 2)
+                continue
+            # Silhouette edge: one face visible, one not → draw as outline
+            vis_flags = [face_visible[fi] for fi in adj_faces]
+            any_visible = any(vis_flags)
+            all_visible = all(vis_flags)
+            if any_visible:
+                # Silhouette edge gets brighter color
+                color = (0, 255, 0) if all_visible else (100, 255, 180)
+                cv2.line(frame, tuple(proj[a]), tuple(proj[b]), color, 2)
+    else:
+        # Generic shapes (letters, numbers, spheres, custom AI): draw all edges
+        for e in shape_edges:
+            a, b = e
+            if a < 0 or b < 0 or a >= len(proj) or b >= len(proj):
+                continue
+            cv2.line(frame, tuple(proj[a]), tuple(proj[b]), (0, 255, 0), 2)
+
 
 # ====== AR GESTURES (FIXED - NO RESET) ======
 def handle_ar_gestures(frame, results):
@@ -965,10 +1070,10 @@ def main():
         h,w,_ = frame.shape
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        # New Tasks API: detect_for_video requires a monotonically increasing timestamp
+        # New Tasks API: detect_for_video with monotonically increasing timestamp
         global _frame_timestamp_ms
         _frame_timestamp_ms += 33  # ~30fps
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+        mp_image = Image(image_format=ImageFormat.SRGB, data=rgb)
         _detection = hands.detect_for_video(mp_image, _frame_timestamp_ms)
         results = _HandResults(_detection, w, h)
 
