@@ -1053,8 +1053,8 @@ def handle_drawing_mode(frame, results, w, h):
     if not results.multi_hand_landmarks:
         return
     
-    hand = results.multi_hand_landmarks[0]
-    lm = [(int(l.x * w), int(l.y * h)) for l in hand.landmark]
+    # Compatibility shim already provides pixel tuples for landmarks
+    lm = results.multi_hand_landmarks[0]  # already (int, int) tuples from _HandResults shim
     is_left = get_hand_side_from_mh(results.multi_handedness[0])
     fingers = finger_states(lm, is_left)
 
