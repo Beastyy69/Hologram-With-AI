@@ -22,6 +22,19 @@ This project implements real-time, controller-free gesture interaction using a w
 - Two-Hand Rotate
   - Use both hands to rotate object 360°.
 
+## New Controls Added
+
+- Fist (Grab) Gesture → Freeze/Unfreeze Shape
+  - Make a fist to freeze the hologram in its current pose. Repeat to unfreeze.
+  - Useful for precise positioning and avoiding accidental transforms.
+
+- Wave Gesture → Cycle Shape Control Modes
+  - Wave your hand left-right rapidly to switch between:
+    - `MANIPULATION` — normal sensitivity for move/scale/rotate
+    - `PRECISION` — lower sensitivity for fine-grained adjustments
+    - `VIEW` — view-only mode (minimal transforms)
+  - The wave detection includes a short cooldown to avoid accidental repeated switches.
+
 ## How it Works (high level)
 
 - Hand landmarks are detected with MediaPipe Hand Landmarker (Tasks API).
