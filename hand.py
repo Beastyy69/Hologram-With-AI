@@ -15,6 +15,12 @@ import queue
 import time
 import json
 import re
+# ===== Drawing Mode Globals =====
+bpoints = [deque(maxlen=1024)]
+gpoints = [deque(maxlen=1024)]
+rpoints = [deque(maxlen=1024)]
+ypoints = [deque(maxlen=1024)]
+
 #Add All The Variables Here
 #Mouse state globals
 CLICK_COOLDOWN = 0.4
