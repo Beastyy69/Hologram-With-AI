@@ -82,8 +82,14 @@ pip install google-generativeai speechrecognition pyaudio
 ## ▶️ Run Application
 
 ```sh
-python main.py
+python hand.py
 ```
+
+---
+
+## **Real-Time Gesture Control**
+
+This repository includes a working real-time gesture control implementation using MediaPipe and OpenCV. See the detailed gesture mappings and usage notes in [GESTURES.md](GESTURES.md).
 
 ---
 
