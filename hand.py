@@ -118,6 +118,18 @@ prev_two_hand_dist = None
 prev_center1 = None
 prev_center2 = None
 
+# ===== Advanced Shape Control =====
+# When user makes a fist -> freeze/unfreeze the shape (prevents accidental transforms)
+shape_frozen = False
+# Sub-modes for shape interaction: MANIPULATION, PRECISION, VIEW
+shape_control_mode = "MANIPULATION"
+# Buffers to detect wave gestures per-hand
+wave_buffers = {}
+last_wave_time = 0
+WAVE_COOLDOWN = 1.0
+FIST_TOGGLE_COOLDOWN = 0.6
+last_fist_toggle = 0
+
 last_ai_command = ""
 last_ai_status = ""
 BUTTONS = {}
@@ -655,6 +667,7 @@ def draw_shape(frame):
 # ====== AR GESTURES ======
 def handle_ar_gestures(frame, results):
     global shape_pos, shape_scale, rot_x, rot_y, prev_two_hand_dist
+    global shape_frozen, shape_control_mode, last_wave_time, last_fist_toggle
     h, w = frame.shape[:2]
 
     if not results.multi_hand_landmarks:
@@ -667,6 +680,41 @@ def handle_ar_gestures(frame, results):
         is_left = get_hand_side_from_mh(mh)
         fingers = finger_states(lm, is_left)
         hands_info.append((lm, fingers, i))
+
+    # --- Fist: toggle freeze/unfreeze (edge triggered)
+    now = time.time()
+    any_fist = any(sum(f) == 0 for (_, f, _) in hands_info)
+    if any_fist and (now - last_fist_toggle) > FIST_TOGGLE_COOLDOWN:
+        shape_frozen = not shape_frozen
+        last_fist_toggle = now
+        print("Shape frozen" if shape_frozen else "Shape unfrozen")
+
+    # --- Wave detection: lateral oscillation -> cycle shape_control_mode ---
+    for (lm, f, hid) in hands_info:
+        x = lm[9][0]
+        buf = wave_buffers.get(hid)
+        if buf is None:
+            buf = deque(maxlen=12)
+            wave_buffers[hid] = buf
+        buf.append((now, x))
+        if len(buf) >= 6 and (now - last_wave_time) > WAVE_COOLDOWN:
+            xs = [p[1] for p in buf]
+            diffs = np.diff(xs)
+            signs = np.sign(diffs)
+            sign_changes = sum(1 for i in range(1, len(signs)) if signs[i] != signs[i-1] and abs(diffs[i]) > 10)
+            if sign_changes >= 2 and abs(xs[-1] - xs[0]) > 20:
+                last_wave_time = now
+                if shape_control_mode == "MANIPULATION":
+                    shape_control_mode = "PRECISION"
+                elif shape_control_mode == "PRECISION":
+                    shape_control_mode = "VIEW"
+                else:
+                    shape_control_mode = "MANIPULATION"
+                print(f"Shape control mode -> {shape_control_mode}")
+
+    # If frozen, do not update transforms
+    if shape_frozen:
+        return
 
     if len(hands_info) == 2:
         (lm1, f1, idx1), (lm2, f2, idx2) = hands_info
@@ -691,7 +739,9 @@ def handle_ar_gestures(frame, results):
         if open1 and open2:
             if prev_two_hand_dist is not None:
                 diff = dist - prev_two_hand_dist
-                new_scale = shape_scale + diff * 1.0
+                # scale sensitivity reduced in PRECISION mode
+                scale_sens = 0.4 if shape_control_mode == "PRECISION" else 1.0
+                new_scale = shape_scale + diff * scale_sens
                 new_scale = np.clip(new_scale, 10, 600)
                 scale_buf.append(new_scale)
                 shape_scale = sum(scale_buf)/len(scale_buf) if scale_buf else new_scale
@@ -699,16 +749,20 @@ def handle_ar_gestures(frame, results):
 
             dx = (mid_x - w/2) / (w/2)
             dy = (mid_y - h/2) / (h/2)
-            rot_y_buf.append(dx * math.pi * 1.2)
-            rot_x_buf.append(dy * math.pi * 1.2)
+            # rotation sensitivity reduced in PRECISION mode
+            rot_sens = 0.5 if shape_control_mode == "PRECISION" else 1.2
+            rot_y_buf.append(dx * math.pi * rot_sens)
+            rot_x_buf.append(dy * math.pi * rot_sens)
             rot_y = sum(rot_y_buf)/len(rot_y_buf)
             rot_x = sum(rot_x_buf)/len(rot_x_buf)
 
         elif index1 and index2:
             move_buf_x.append(mid_x)
             move_buf_y.append(mid_y)
-            shape_pos[0] = sum(move_buf_x)/len(move_buf_x)
-            shape_pos[1] = sum(move_buf_y)/len(move_buf_y)
+            # translation sensitivity reduced in PRECISION mode
+            trans_sens = 0.4 if shape_control_mode == "PRECISION" else 1.0
+            shape_pos[0] = shape_pos[0] + (sum(move_buf_x)/len(move_buf_x) - shape_pos[0]) * trans_sens
+            shape_pos[1] = shape_pos[1] + (sum(move_buf_y)/len(move_buf_y) - shape_pos[1]) * trans_sens
 
         else:
             prev_two_hand_dist = dist
